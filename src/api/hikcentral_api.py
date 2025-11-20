@@ -111,11 +111,12 @@ class HikCentralAPI:
         timestamp = str(int(time.time() * 1000))
         
         headers = {
-            'x-ca-key': self.app_key,
-            'x-ca-nonce': nonce,
-            'x-ca-timestamp': timestamp,
-            'Content-Type': 'application/json;charset=UTF-8',
             'Accept': 'application/json',
+            'Content-Type': 'application/json;charset=UTF-8',
+            'X-Ca-Key': self.app_key,
+            'X-Ca-Nonce': nonce,
+            'X-Ca-Timestamp': timestamp,
+            'X-Ca-Signature-Headers': 'x-ca-key,x-ca-nonce,x-ca-timestamp',
             'userId': self.user_id
         }
         
