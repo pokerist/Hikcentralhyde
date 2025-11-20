@@ -1,46 +1,41 @@
 """
 Configuration management for HydePark sync system
 """
-import os
 from pathlib import Path
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 class Config:
     """Application configuration"""
     
     # Supabase Configuration
-    SUPABASE_BASE_URL = os.getenv('SUPABASE_URL') or os.getenv('SUPABASE_BASE_URL')
-    SUPABASE_API_KEY = os.getenv('SUPABASE_API_KEY')
-    SUPABASE_AUTH_BEARER = os.getenv('SUPABASE_BEARER_TOKEN') or os.getenv('SUPABASE_AUTH_BEARER')
+    SUPABASE_BASE_URL = 'https://xrkxxqhoglrimiljfnml.supabase.co/functions/v1/make-server-2c3121a9'
+    SUPABASE_API_KEY = 'XyZ9k2LmN4pQ7rS8tU0vW1xA3bC5dE6f7gH8iJ9kL0mN1o=='
+    SUPABASE_AUTH_BEARER = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhya3h4cWhvZ2xyaW1pbGpmbm1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0MjIxMDEsImV4cCI6MjA3Nzk5ODEwMX0.3G20OL9ujCPyFOOMYc6UVbIv97v5LjsWbQLPZaqHRsk'
     
     # HikCentral Configuration
-    HIKCENTRAL_BASE_URL = os.getenv('HIKCENTRAL_BASE_URL')
-    HIKCENTRAL_APP_KEY = os.getenv('HIKCENTRAL_APP_KEY')
-    HIKCENTRAL_APP_SECRET = os.getenv('HIKCENTRAL_APP_SECRET')
-    HIKCENTRAL_USER_ID = os.getenv('HIKCENTRAL_USER_ID', 'admin')
-    HIKCENTRAL_ORG_INDEX_CODE = os.getenv('HIKCENTRAL_ORG_INDEX_CODE', '1')
-    HIKCENTRAL_PRIVILEGE_GROUP_ID = os.getenv('HIKCENTRAL_PRIVILEGE_GROUP_ID', '3')
-    HIKCENTRAL_VERIFY_SSL = os.getenv('VERIFY_SSL', 'false').lower() == 'true'
+    HIKCENTRAL_BASE_URL = 'https://10.127.0.2/artemis'
+    HIKCENTRAL_APP_KEY = '22452825'
+    HIKCENTRAL_APP_SECRET = 'Q9bWogAziordVdIngfoa'
+    HIKCENTRAL_USER_ID = 'admin'
+    HIKCENTRAL_ORG_INDEX_CODE = '1'
+    HIKCENTRAL_PRIVILEGE_GROUP_ID = '3'
+    HIKCENTRAL_VERIFY_SSL = False
     
     # Dashboard Configuration
-    DASHBOARD_HOST = os.getenv('DASHBOARD_HOST', '0.0.0.0')
-    DASHBOARD_PORT = int(os.getenv('DASHBOARD_PORT', 8080))
-    DASHBOARD_USERNAME = os.getenv('DASHBOARD_USERNAME', 'admin')
-    DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', 'admin')
-    DASHBOARD_SESSION_TIMEOUT = int(os.getenv('DASHBOARD_SESSION_TIMEOUT', 1800))
-    DASHBOARD_LOG_RETENTION_DAYS = int(os.getenv('DASHBOARD_LOG_RETENTION_DAYS', 30))
+    DASHBOARD_HOST = '0.0.0.0'
+    DASHBOARD_PORT = 8080
+    DASHBOARD_USERNAME = 'admin'
+    DASHBOARD_PASSWORD = '123456'
+    DASHBOARD_SESSION_TIMEOUT = 1800
+    DASHBOARD_LOG_RETENTION_DAYS = 30
     
     # Logging Configuration
-    LOG_API_REQUESTS = os.getenv('LOG_API_REQUESTS', 'true').lower() == 'true'
-    MAX_REQUEST_LOGS = int(os.getenv('MAX_REQUEST_LOGS', 10000))
+    LOG_API_REQUESTS = True
+    MAX_REQUEST_LOGS = 10000
     
     # System Configuration
-    SYNC_INTERVAL_SECONDS = int(os.getenv('SYNC_INTERVAL_SECONDS', 60))
-    DATA_DIR = Path(os.getenv('DATA_DIR', './data'))
-    FACE_SIMILARITY_THRESHOLD = float(os.getenv('FACE_MATCH_THRESHOLD') or os.getenv('FACE_SIMILARITY_THRESHOLD', '0.8'))
+    SYNC_INTERVAL_SECONDS = 60
+    DATA_DIR = Path('./data')
+    FACE_SIMILARITY_THRESHOLD = 0.8
     
     # Data directories
     FACES_DIR = DATA_DIR / 'faces'
@@ -49,7 +44,7 @@ class Config:
     REQUEST_LOGS_DB = DATA_DIR / 'request_logs.json'
     
     # Secret key for Flask sessions
-    SECRET_KEY = os.getenv('SECRET_KEY', 'change-this-secret-key-in-production')
+    SECRET_KEY = 'hydepark-dashboard-secret-key-2025'
     
     @classmethod
     def ensure_directories(cls):
@@ -71,10 +66,10 @@ class Config:
         errors = []
         
         if not cls.SUPABASE_BASE_URL:
-            errors.append("SUPABASE_URL (or SUPABASE_BASE_URL) is required")
+            errors.append("SUPABASE_BASE_URL is required")
         
         if not cls.SUPABASE_API_KEY and not cls.SUPABASE_AUTH_BEARER:
-            errors.append("Either SUPABASE_API_KEY or SUPABASE_BEARER_TOKEN is required")
+            errors.append("Either SUPABASE_API_KEY or SUPABASE_AUTH_BEARER is required")
         
         if not cls.HIKCENTRAL_BASE_URL:
             errors.append("HIKCENTRAL_BASE_URL is required")

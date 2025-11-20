@@ -1,147 +1,87 @@
 # HydePark Sync System
 
-Local synchronization bridge between Supabase (online) and HikCentral (offline LAN).
+نظام مزامنة محلي يربط بين تطبيق Supabase و HikCentral للأمان.
 
-**Clean Installation** - This version automatically cleans old installations before deploying.
+## المميزات
 
----
+- ✅ مزامنة تلقائية كل 60 ثانية
+- ✅ كشف الوجوه المكررة
+- ✅ Dashboard ويب لمراقبة العمليات
+- ✅ تسجيل شامل للـ API requests
+- ✅ معالجة الصور وكشف الوجوه
 
-## Quick Install
+## التنصيب
 
-```bash
-cd ~/Hikcentralhyde/src
-bash deploy.sh
-```
-
-The deploy script will:
-- Stop and backup any existing installation
-- Clean old files (preserving data/ and .env)
-- Install fresh version
-- Restore your data and configuration
-
-Follow prompts. Edit `.env` after installation if needed.
-
----
-
-## Requirements
-
-- Ubuntu 18.04+
-- Python 3.8+
-- 2GB RAM, 10GB disk
-- LAN access to HikCentral
-- Internet access to Supabase
-
----
-
-## Configuration
-
-Edit `/opt/hydepark-sync/.env`:
-
-```env
-# Supabase
-SUPABASE_URL=https://your-project.supabase.co/functions/v1/your-function
-SUPABASE_BEARER_TOKEN=eyJ...
-SUPABASE_API_KEY=your-api-key
-
-# HikCentral (use IP:PORT format, /artemis will be added automatically)
-HIKCENTRAL_BASE_URL=https://10.127.0.2
-HIKCENTRAL_APP_KEY=your-app-key
-HIKCENTRAL_APP_SECRET=your-secret
-
-# Dashboard
-DASHBOARD_PASSWORD=change-this-password
-```
-
----
-
-## Commands
+### على سيرفر Ubuntu جديد
 
 ```bash
-# Status
-sudo systemctl status hydepark-sync
+# 1. Clone المشروع
+git clone https://github.com/YOUR_REPO/hydepark-sync.git
+cd hydepark-sync
 
-# Logs
+# 2. شغل script التنصيب
+chmod +x deploy.sh
+./deploy.sh
+```
+
+**خلاص! النظام يشتغل تلقائياً** ✅
+
+## الوصول للـ Dashboard
+
+افتح المتصفح على:
+```
+http://YOUR_SERVER_IP:8080
+```
+
+**بيانات الدخول:**
+- Username: `admin`
+- Password: `123456`
+
+## الأوامر المهمة
+
+```bash
+# عرض السجلات
 sudo journalctl -u hydepark-sync -f
 
-# Restart
+# إعادة تشغيل
 sudo systemctl restart hydepark-sync
 
-# Update
-cd ~/Hikcentralhyde/src && bash update.sh
+# إيقاف الخدمة
+sudo systemctl stop hydepark-sync
+
+# تشغيل الخدمة
+sudo systemctl start hydepark-sync
+
+# حالة الخدمة
+sudo systemctl status hydepark-sync
 ```
 
----
-
-## Dashboard
-
-Access: `http://server-ip:8080`
-- Username: `admin`
-- Password: (from .env)
-
----
-
-## How It Works
-
-1. **Polling**: Every 60s, fetch pending events from Supabase
-2. **Processing**: 
-   - `worker.created` → Add to HikCentral + grant access
-   - `worker.blocked` → Revoke access
-   - `worker.deleted` → Delete from HikCentral
-   - `worker.unblocked` → Restore access
-3. **Sync**: Update worker status back to Supabase
-4. **Face Recognition**: Detect duplicate faces (fraud prevention)
-
----
-
-## Directory Structure
+## المجلدات المهمة
 
 ```
-/opt/hydepark-sync/
-├── main.py                 # Entry point
-├── config.py               # Configuration
-├── database.py             # Local JSON database
-├── .env                    # Configuration (DO NOT COMMIT)
-├── api/
-│   ├── supabase_api.py     # Supabase client
-│   └── hikcentral_api.py   # HikCentral client
-├── processors/
-│   ├── event_processor.py  # Event handling logic
-│   └── image_processor.py  # Face recognition
-├── dashboard/              # Web dashboard
-├── data/
-│   ├── faces/              # Downloaded face images
-│   ├── id_cards/           # Downloaded ID cards
-│   ├── workers.json        # Worker database
-│   └── request_logs.json   # API logs
-└── venv/                   # Python virtual environment
+/opt/hydepark-sync/          # البرنامج الرئيسي
+/opt/hydepark-sync/data/     # البيانات والصور
 ```
 
----
-
-## Troubleshooting
+## إلغاء التنصيب
 
 ```bash
-# Test configuration
-cd /opt/hydepark-sync
-source venv/bin/activate
-python3 test_config.py
-deactivate
-
-# Verify setup
-bash /opt/hydepark-sync/verify_setup.sh
-
-# Check specific error
-sudo journalctl -u hydepark-sync -n 100 --no-pager | grep -i error
+sudo systemctl stop hydepark-sync
+sudo systemctl disable hydepark-sync
+sudo rm /etc/systemd/system/hydepark-sync.service
+sudo rm -rf /opt/hydepark-sync
+sudo systemctl daemon-reload
 ```
 
----
+## الملاحظات
 
-## API Documentation
+- النظام يشتغل بدون اتصال إنترنت مباشر
+- كل الإعدادات في ملف `config.py`
+- السيرفر لازم يقدر يوصل للـ HikCentral على الشبكة المحلية
 
-See `API_DOCS.md` for Supabase and HikCentral API details.
+## الدعم
 
----
-
-## License
-
-Proprietary - HydePark Project
+لو في مشكلة، شوف السجلات:
+```bash
+sudo journalctl -u hydepark-sync -n 100
+```

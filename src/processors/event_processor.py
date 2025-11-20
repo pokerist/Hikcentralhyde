@@ -214,10 +214,27 @@ class EventProcessor:
                 logger.error(f"Failed to convert face image to base64: {national_id}")
                 return
             
-            # Prepare dates (ISO format without microseconds)
-            now = datetime.now()
-            begin_time = now.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
-            end_time = (now + timedelta(days=3650)).strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'  # 10 years
+            # Prepare dates from Supabase data
+            from datetime import datetime
+            
+            # Get createdAt from worker data (ISO format like: 2025-11-20T21:12:40.643Z)
+            created_at = worker_data.get('createdAt')
+            
+            if created_at:
+                # Parse ISO date: 2025-11-20T21:12:40.643Z
+                # Convert to HikCentral format: 2025-11-20T21:12:40+02:00
+                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                # Convert to Cairo timezone (+02:00)
+                begin_time = dt.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
+                # Add 10 years
+                from datetime import timedelta
+                end_dt = dt + timedelta(days=3650)
+                end_time = end_dt.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
+            else:
+                # Fallback to now if no createdAt
+                now = datetime.now()
+                begin_time = now.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
+                end_time = (now + timedelta(days=3650)).strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
             
             # Split name into family and given names
             full_name = worker_data.get('fullName', '')
@@ -225,13 +242,14 @@ class EventProcessor:
             family_name = name_parts[0] if name_parts else ''
             given_name = name_parts[1] if len(name_parts) > 1 else ''
             
-            # Get worker ID from event
+            # Get worker ID from event - this is the unique ID from Supabase
             worker_id = worker_data.get('id', national_id)
             
             # Add person to HikCentral
             logger.info(f"Adding person to HikCentral: {national_id} (Worker ID: {worker_id})")
+            logger.info(f"Date range: {begin_time} to {end_time}")
             person_id = self.hikcentral.add_person(
-                person_code=worker_id,  # Use worker.id not nationalIdNumber
+                person_code=worker_id,  # Use worker.id from Supabase (e.g., "25165168156010")
                 family_name=family_name,
                 given_name=given_name,
                 gender=1,  # Male by default

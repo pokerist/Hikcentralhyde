@@ -1,517 +1,88 @@
 #!/bin/bash
 
-# HydePark Sync System - Clean Deployment Script
-# This script performs a clean installation by removing old files
+# HydePark Sync System - Complete Deployment Script
+# This script installs everything from scratch
 
-set -e  # Exit on any error
+set -e
 
-# Colors for output
+echo "================================"
+echo "HydePark Sync - Auto Deployment"
+echo "================================"
+echo ""
+
+# Check if running as root
+if [ "$EUID" -eq 0 ]; then 
+   echo "❌ Please run as regular user (not root)"
+   echo "   The script will ask for sudo when needed"
+   exit 1
+fi
+
+# Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-APP_NAME="hydepark-sync"
-INSTALL_DIR="/opt/$APP_NAME"
-SERVICE_NAME="hydepark-sync.service"
-CURRENT_USER=$(whoami)
+echo -e "${GREEN}[1/6] Installing system dependencies...${NC}"
+sudo apt-get update
+sudo apt-get install -y python3 python3-pip python3-venv git cmake build-essential
 
-# Functions
-print_header() {
-    echo -e "\n${BLUE}========================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}========================================${NC}\n"
-}
+echo ""
+echo -e "${GREEN}[2/6] Creating application directory...${NC}"
+sudo mkdir -p /opt/hydepark-sync
+sudo chown $USER:$USER /opt/hydepark-sync
 
-print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
-}
+echo ""
+echo -e "${GREEN}[3/6] Copying application files...${NC}"
+# Copy all Python files and directories
+cp -r api /opt/hydepark-sync/
+cp -r processors /opt/hydepark-sync/
+cp -r dashboard /opt/hydepark-sync/
+cp -r utils /opt/hydepark-sync/
+cp -r systemd /opt/hydepark-sync/
+cp main.py /opt/hydepark-sync/
+cp config.py /opt/hydepark-sync/
+cp database.py /opt/hydepark-sync/
+cp requirements.txt /opt/hydepark-sync/
 
-print_error() {
-    echo -e "${RED}✗ $1${NC}"
-}
+echo ""
+echo -e "${GREEN}[4/6] Setting up Python virtual environment...${NC}"
+cd /opt/hydepark-sync
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
 
-print_warning() {
-    echo -e "${YELLOW}⚠ $1${NC}"
-}
+echo ""
+echo -e "${GREEN}[5/6] Creating data directories...${NC}"
+mkdir -p /opt/hydepark-sync/data/faces
+mkdir -p /opt/hydepark-sync/data/id_cards
+echo "[]" > /opt/hydepark-sync/data/workers.json
+echo "[]" > /opt/hydepark-sync/data/request_logs.json
 
-print_info() {
-    echo -e "${BLUE}ℹ $1${NC}"
-}
+echo ""
+echo -e "${GREEN}[6/6] Installing systemd service...${NC}"
+# Replace %i with current user in service file
+sed "s/%i/$USER/g" /opt/hydepark-sync/systemd/hydepark-sync.service | sudo tee /etc/systemd/system/hydepark-sync.service > /dev/null
+sudo systemctl daemon-reload
+sudo systemctl enable hydepark-sync
+sudo systemctl start hydepark-sync
 
-check_root() {
-    if [ "$EUID" -eq 0 ]; then 
-        print_error "لا تشغل هذا السكريبت بصلاحيات root"
-        print_info "استخدم: bash deploy.sh"
-        exit 1
-    fi
-}
-
-check_ubuntu() {
-    if [ ! -f /etc/os-release ]; then
-        print_error "نظام التشغيل غير مدعوم"
-        exit 1
-    fi
-    
-    . /etc/os-release
-    if [ "$ID" != "ubuntu" ]; then
-        print_warning "هذا السكريبت مصمم لـ Ubuntu، قد يحتاج تعديلات على $ID"
-    fi
-}
-
-cleanup_old_installation() {
-    print_header "تنظيف التثبيت القديم"
-    
-    if [ ! -d "$INSTALL_DIR" ]; then
-        print_info "لا يوجد تثبيت قديم"
-        return 0
-    fi
-    
-    print_warning "تم العثور على تثبيت قديم في $INSTALL_DIR"
-    
-    # Stop the service if running
-    if sudo systemctl is-active --quiet $SERVICE_NAME; then
-        print_info "إيقاف الخدمة القديمة..."
-        sudo systemctl stop $SERVICE_NAME
-        print_success "تم إيقاف الخدمة"
-    fi
-    
-    # Disable service
-    if sudo systemctl is-enabled --quiet $SERVICE_NAME 2>/dev/null; then
-        print_info "تعطيل الخدمة القديمة..."
-        sudo systemctl disable $SERVICE_NAME
-    fi
-    
-    # Backup data and .env
-    print_info "نسخ احتياطي للبيانات والإعدادات..."
-    BACKUP_DIR="/tmp/hydepark-backup-$(date +%Y%m%d-%H%M%S)"
-    mkdir -p "$BACKUP_DIR"
-    
-    if [ -d "$INSTALL_DIR/data" ]; then
-        cp -r "$INSTALL_DIR/data" "$BACKUP_DIR/"
-        print_success "تم حفظ نسخة احتياطية من data/"
-    fi
-    
-    if [ -f "$INSTALL_DIR/.env" ]; then
-        cp "$INSTALL_DIR/.env" "$BACKUP_DIR/"
-        print_success "تم حفظ نسخة احتياطية من .env"
-    fi
-    
-    print_info "النسخة الاحتياطية في: $BACKUP_DIR"
-    
-    # Remove old installation
-    print_info "حذف الملفات القديمة..."
-    sudo rm -rf "$INSTALL_DIR"
-    print_success "تم حذف التثبيت القديم"
-    
-    # Create new directory
-    print_info "إنشاء مجلد جديد..."
-    sudo mkdir -p "$INSTALL_DIR"
-    sudo chown $CURRENT_USER:$CURRENT_USER "$INSTALL_DIR"
-    
-    # Restore data and .env
-    if [ -d "$BACKUP_DIR/data" ]; then
-        print_info "استعادة البيانات..."
-        cp -r "$BACKUP_DIR/data" "$INSTALL_DIR/"
-        print_success "تم استعادة data/"
-    fi
-    
-    if [ -f "$BACKUP_DIR/.env" ]; then
-        print_info "استعادة الإعدادات..."
-        cp "$BACKUP_DIR/.env" "$INSTALL_DIR/"
-        print_success "تم استعادة .env"
-    fi
-    
-    print_success "تم تنظيف التثبيت القديم بنجاح"
-}
-
-install_system_dependencies() {
-    print_header "تثبيت متطلبات النظام"
-    
-    print_info "تحديث قائمة الحزم..."
-    sudo apt update
-    
-    print_info "تثبيت Python و Git..."
-    sudo apt install -y python3 python3-pip python3-venv git
-    
-    print_info "تثبيت أدوات التطوير..."
-    sudo apt install -y build-essential cmake pkg-config
-    
-    print_info "تثبيت مكتبات معالجة الصور..."
-    sudo apt install -y libopenblas-dev liblapack-dev
-    sudo apt install -y libx11-dev libgtk-3-dev
-    sudo apt install -y libjpeg-dev libpng-dev libtiff-dev
-    
-    print_success "تم تثبيت جميع متطلبات النظام"
-}
-
-copy_application_files() {
-    print_header "نسخ ملفات التطبيق"
-    
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-    
-    print_info "نسخ الملفات من $SCRIPT_DIR إلى $INSTALL_DIR"
-    
-    # Copy only specific files and directories we need
-    rsync -av --exclude='venv' \
-              --exclude='__pycache__' \
-              --exclude='.git' \
-              --exclude='*.pyc' \
-              --exclude='data' \
-              --exclude='.env' \
-              --exclude='*.log' \
-              --exclude='.DS_Store' \
-              "$SCRIPT_DIR/" "$INSTALL_DIR/"
-    
-    print_success "تم نسخ ملفات التطبيق"
-}
-
-create_virtual_environment() {
-    print_header "إنشاء البيئة الافتراضية"
-    
-    cd "$INSTALL_DIR"
-    
-    print_info "إنشاء venv..."
-    python3 -m venv venv
-    
-    print_info "تفعيل البيئة الافتراضية..."
-    source venv/bin/activate
-    
-    print_info "ترقية pip..."
-    pip install --upgrade pip
-    
-    print_success "تم إنشاء البيئة الافتراضية"
-}
-
-install_python_dependencies() {
-    print_header "تثبيت مكتبات Python"
-    
-    cd "$INSTALL_DIR"
-    source venv/bin/activate
-    
-    print_info "تثبيت المكتبات من requirements.txt..."
-    print_warning "قد يستغرق تثبيت dlib و face-recognition عدة دقائق..."
-    
-    # Use the special installation script
-    if [ -f "install_requirements.sh" ]; then
-        bash install_requirements.sh
-    else
-        # Fallback to pip install
-        pip install -r requirements.txt
-    fi
-    
-    print_success "تم تثبيت جميع مكتبات Python"
-}
-
-create_data_directories() {
-    print_header "إعداد مجلدات البيانات"
-    
-    cd "$INSTALL_DIR"
-    
-    # Check if data directory already exists (from backup restore)
-    if [ -d "data" ]; then
-        print_info "مجلد data موجود من النسخة الاحتياطية"
-        
-        # Make sure subdirectories exist
-        mkdir -p data/faces
-        mkdir -p data/id_cards
-        
-        # Make sure database files exist
-        if [ ! -f "data/workers.json" ]; then
-            echo "[]" > data/workers.json
-        fi
-        
-        if [ ! -f "data/request_logs.json" ]; then
-            echo "[]" > data/request_logs.json
-        fi
-    else
-        print_info "إنشاء مجلدات data جديدة..."
-        mkdir -p data/faces
-        mkdir -p data/id_cards
-        
-        print_info "إنشاء ملفات قاعدة البيانات..."
-        echo "[]" > data/workers.json
-        echo "[]" > data/request_logs.json
-    fi
-    
-    print_info "ضبط صلاحيات الملفات..."
-    chmod 755 data
-    chmod 755 data/faces
-    chmod 755 data/id_cards
-    chmod 644 data/workers.json
-    chmod 644 data/request_logs.json
-    
-    print_success "تم إعداد مجلدات البيانات"
-}
-
-configure_environment() {
-    print_header "إعداد ملف الإعدادات"
-    
-    cd "$INSTALL_DIR"
-    
-    if [ -f .env ]; then
-        print_success "ملف .env موجود من النسخة الاحتياطية"
-        
-        read -p "هل تريد تعديل الإعدادات الآن؟ (y/n): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            nano .env
-        fi
-    else
-        print_info "إنشاء ملف .env جديد..."
-        
-        # Create .env from template
-        cat > .env << 'ENVEOF'
-# Supabase API Configuration
-SUPABASE_URL=https://xrkxxqhoglrimiljfnml.supabase.co/functions/v1/make-server-2c3121a9
-SUPABASE_BEARER_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhya3h4cWhvZ2xyaW1pbGpmbm1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0MjIxMDEsImV4cCI6MjA3Nzk5ODEwMX0.3G20OL9ujCPyFOOMYc6UVbIv97v5LjsWbQLPZaqHRsk
-SUPABASE_API_KEY=XyZ9k2LmN4pQ7rS8tU0vW1xA3bC5dE6f7gH8iJ9kL0mN1o==
-
-# HikCentral Configuration (use IP:PORT format, /artemis will be added automatically)
-HIKCENTRAL_BASE_URL=https://10.127.0.2
-HIKCENTRAL_APP_KEY=22452825
-HIKCENTRAL_APP_SECRET=Q9bWogAziordVdIngfoa
-HIKCENTRAL_USER_ID=admin
-HIKCENTRAL_ORG_INDEX_CODE=1
-HIKCENTRAL_PRIVILEGE_GROUP_ID=3
-
-# SSL Verification
-VERIFY_SSL=False
-
-# Dashboard Configuration
-DASHBOARD_HOST=0.0.0.0
-DASHBOARD_PORT=8080
-DASHBOARD_USERNAME=admin
-DASHBOARD_PASSWORD=change_this_password_immediately
-DASHBOARD_SESSION_TIMEOUT=1800
-DASHBOARD_LOG_RETENTION_DAYS=30
-
-# Logging Configuration
-LOG_API_REQUESTS=true
-MAX_REQUEST_LOGS=10000
-
-# Face Recognition Settings
-FACE_MATCH_THRESHOLD=0.8
-
-# Sync Settings
-SYNC_INTERVAL_SECONDS=60
-
-# System Configuration
-DATA_DIR=./data
-
-# Secret key for Flask sessions
-SECRET_KEY=change-this-secret-key-in-production-use-random-string
-ENVEOF
-        
-        print_success "تم إنشاء ملف .env"
-        
-        print_warning "يجب عليك تعديل ملف .env وإضافة البيانات الحقيقية!"
-        print_info "استخدم: nano $INSTALL_DIR/.env"
-        
-        read -p "هل تريد فتح ملف .env الآن للتعديل؟ (y/n): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            nano .env
-        fi
-    fi
-}
-
-setup_systemd_service() {
-    print_header "إعداد خدمة Systemd"
-    
-    # Create service file
-    cat > /tmp/$SERVICE_NAME << EOF
-[Unit]
-Description=HydePark Sync Service
-After=network.target
-
-[Service]
-Type=simple
-User=$CURRENT_USER
-WorkingDirectory=$INSTALL_DIR
-Environment="PATH=$INSTALL_DIR/venv/bin"
-ExecStart=$INSTALL_DIR/venv/bin/python $INSTALL_DIR/main.py
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    
-    print_info "نسخ ملف الخدمة إلى systemd..."
-    sudo cp /tmp/$SERVICE_NAME /etc/systemd/system/$SERVICE_NAME
-    sudo rm /tmp/$SERVICE_NAME
-    
-    print_info "إعادة تحميل systemd..."
-    sudo systemctl daemon-reload
-    
-    print_info "تفعيل الخدمة للتشغيل التلقائي عند بدء النظام..."
-    sudo systemctl enable $SERVICE_NAME
-    
-    print_success "تم إعداد خدمة Systemd"
-}
-
-configure_firewall() {
-    print_header "إعداد الجدار الناري"
-    
-    if command -v ufw &> /dev/null; then
-        read -p "هل تريد فتح منفذ Dashboard (8080) على الجدار الناري؟ (y/n): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            print_info "فتح منفذ 8080..."
-            sudo ufw allow 8080/tcp
-            print_success "تم فتح منفذ 8080"
-        else
-            print_warning "تذكر أن تفتح المنفذ يدوياً إذا احتجت الوصول من أجهزة أخرى"
-        fi
-    else
-        print_info "UFW غير مثبت، تخطي إعداد الجدار الناري"
-    fi
-}
-
-test_configuration() {
-    print_header "اختبار الإعدادات"
-    
-    cd "$INSTALL_DIR"
-    source venv/bin/activate
-    
-    print_info "التحقق من إمكانية استيراد المكتبات..."
-    
-    python3 << EOF
-try:
-    import flask
-    import requests
-    import face_recognition
-    import schedule
-    print("✓ جميع المكتبات متوفرة")
-    exit(0)
-except ImportError as e:
-    print(f"✗ خطأ في استيراد المكتبات: {e}")
-    exit(1)
-EOF
-    
-    if [ $? -eq 0 ]; then
-        print_success "اختبار المكتبات نجح"
-    else
-        print_error "فشل اختبار المكتبات"
-        print_warning "يمكنك المتابعة، لكن قد تحتاج لتثبيت المكتبات الناقصة يدوياً"
-    fi
-}
-
-start_service() {
-    print_header "بدء الخدمة"
-    
-    read -p "هل تريد بدء الخدمة الآن؟ (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        print_info "بدء خدمة $SERVICE_NAME..."
-        sudo systemctl start $SERVICE_NAME
-        
-        sleep 3
-        
-        if sudo systemctl is-active --quiet $SERVICE_NAME; then
-            print_success "الخدمة تعمل بنجاح!"
-            
-            print_info "عرض آخر 10 أسطر من السجلات:"
-            sudo journalctl -u $SERVICE_NAME -n 10 --no-pager
-        else
-            print_error "فشل في بدء الخدمة"
-            print_info "عرض آخر 20 سطر من السجلات:"
-            sudo journalctl -u $SERVICE_NAME -n 20 --no-pager
-            
-            print_warning "قد تحتاج لفحص ملف .env والتأكد من الإعدادات"
-        fi
-    else
-        print_info "يمكنك بدء الخدمة لاحقاً باستخدام:"
-        print_info "sudo systemctl start $SERVICE_NAME"
-    fi
-}
-
-print_summary() {
-    print_header "ملخص التثبيت"
-    
-    echo -e "${GREEN}✓ تم تثبيت HydePark Sync بنجاح!${NC}\n"
-    
-    echo -e "${BLUE}معلومات مهمة:${NC}"
-    echo -e "  • مجلد التثبيت: ${YELLOW}$INSTALL_DIR${NC}"
-    echo -e "  • ملف الإعدادات: ${YELLOW}$INSTALL_DIR/.env${NC}"
-    echo -e "  • اسم الخدمة: ${YELLOW}$SERVICE_NAME${NC}"
-    echo ""
-    
-    echo -e "${BLUE}الأوامر المفيدة:${NC}"
-    echo -e "  • عرض حالة الخدمة:"
-    echo -e "    ${YELLOW}sudo systemctl status $SERVICE_NAME${NC}"
-    echo -e "  • عرض السجلات المباشرة:"
-    echo -e "    ${YELLOW}sudo journalctl -u $SERVICE_NAME -f${NC}"
-    echo -e "  • إيقاف الخدمة:"
-    echo -e "    ${YELLOW}sudo systemctl stop $SERVICE_NAME${NC}"
-    echo -e "  • إعادة تشغيل الخدمة:"
-    echo -e "    ${YELLOW}sudo systemctl restart $SERVICE_NAME${NC}"
-    echo -e "  • تعديل الإعدادات:"
-    echo -e "    ${YELLOW}nano $INSTALL_DIR/.env${NC}"
-    echo -e "  • تحديث النظام:"
-    echo -e "    ${YELLOW}cd ~/Hikcentralhyde/src && bash update.sh${NC}"
-    echo ""
-    
-    echo -e "${BLUE}الوصول إلى Dashboard:${NC}"
-    LOCAL_IP=$(hostname -I | awk '{print $1}')
-    echo -e "  • ${YELLOW}http://localhost:8080${NC}"
-    echo -e "  • ${YELLOW}http://$LOCAL_IP:8080${NC}"
-    echo -e "  • اسم المستخدم: ${YELLOW}admin${NC}"
-    echo -e "  • كلمة المرور: ${YELLOW}(حسب ما في ملف .env)${NC}"
-    echo ""
-    
-    echo -e "${RED}⚠ خطوات مهمة بعد التثبيت:${NC}"
-    echo -e "  1. تحديث ملف .env بالبيانات الحقيقية"
-    echo -e "  2. إعادة تشغيل الخدمة بعد التعديل"
-    echo -e "  3. فحص السجلات للتأكد من عدم وجود أخطاء"
-    echo ""
-}
-
-# Main execution
-main() {
-    clear
-    
-    print_header "HydePark Sync System - Clean Deployment"
-    
-    echo -e "${BLUE}هذا السكريبت سيقوم بـ:${NC}"
-    echo "  1. تنظيف التثبيت القديم (مع حفظ data و .env)"
-    echo "  2. تثبيت متطلبات النظام"
-    echo "  3. نسخ ملفات التطبيق الجديدة"
-    echo "  4. إنشاء البيئة الافتراضية"
-    echo "  5. تثبيت مكتبات Python"
-    echo "  6. إعداد خدمة Systemd"
-    echo "  7. بدء الخدمة"
-    echo ""
-    
-    read -p "هل تريد المتابعة؟ (y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_error "تم الإلغاء"
-        exit 1
-    fi
-    
-    check_root
-    check_ubuntu
-    cleanup_old_installation
-    install_system_dependencies
-    copy_application_files
-    create_virtual_environment
-    install_python_dependencies
-    create_data_directories
-    configure_environment
-    setup_systemd_service
-    configure_firewall
-    test_configuration
-    start_service
-    print_summary
-    
-    print_success "انتهى التثبيت بنجاح! 🎉"
-}
-
-# Run main function
-main
+echo ""
+echo "================================"
+echo -e "${GREEN}✅ Deployment Complete!${NC}"
+echo "================================"
+echo ""
+echo "Service Status:"
+sudo systemctl status hydepark-sync --no-pager
+echo ""
+echo "Useful Commands:"
+echo "  • View logs:    sudo journalctl -u hydepark-sync -f"
+echo "  • Stop service: sudo systemctl stop hydepark-sync"
+echo "  • Restart:      sudo systemctl restart hydepark-sync"
+echo "  • Dashboard:    http://YOUR_IP:8080"
+echo "                  Username: admin"
+echo "                  Password: 123456"
+echo ""
+echo -e "${YELLOW}⚠️  Dashboard is running on port 8080${NC}"
+echo ""
