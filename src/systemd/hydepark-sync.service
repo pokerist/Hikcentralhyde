@@ -1,0 +1,15 @@
+[Unit]
+Description=HydePark Sync Service
+After=network.target
+
+[Service]
+Type=simple
+User=your_username
+WorkingDirectory=/path/to/hydepark-sync
+Environment="PATH=/path/to/hydepark-sync/venv/bin"
+ExecStart=/path/to/hydepark-sync/venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

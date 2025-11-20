@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - HydePark Sync{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>Total Workers</h3>
+        <div class="value">{{ total_workers }}</div>
+    </div>
+    
+    <div class="stat-card success">
+        <h3>Approved Workers</h3>
+        <div class="value">{{ approved_workers }}</div>
+    </div>
+    
+    <div class="stat-card error">
+        <h3>Blocked Workers</h3>
+        <div class="value">{{ blocked_workers }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Total API Requests</h3>
+        <div class="value">{{ stats.total_requests }}</div>
+    </div>
+    
+    <div class="stat-card success">
+        <h3>Success Rate</h3>
+        <div class="value">{{ "%.1f"|format(stats.success_rate) }}%</div>
+    </div>
+    
+    <div class="stat-card error">
+        <h3>Failed Requests</h3>
+        <div class="value">{{ stats.failed_requests }}</div>
+    </div>
+    
+    <div class="stat-card">
+        <h3>Avg Response Time</h3>
+        <div class="value">{{ "%.0f"|format(stats.avg_duration) }}ms</div>
+    </div>
+    
+    <div class="stat-card">
+        <h3>System Status</h3>
+        <div class="value">
+            <span class="status-indicator online"></span>
+            Online
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Recent API Requests</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>API</th>
+                <th>Endpoint</th>
+                <th>Status</th>
+                <th>Duration</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in recent_logs %}
+            <tr>
+                <td>{{ log.timestamp[:19] }}</td>
+                <td>
+                    {% if log.api_target == 'supabase' %}
+                    <span class="badge info">Supabase</span>
+                    {% else %}
+                    <span class="badge warning">HikCentral</span>
+                    {% endif %}
+                </td>
+                <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    {{ log.endpoint }}
+                </td>
+                <td>
+                    {% if log.success %}
+                    <span class="badge success">{{ log.status_code }}</span>
+                    {% else %}
+                    <span class="badge error">{{ log.status_code }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ log.duration_ms }}ms</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" style="text-align: center; color: #999;">No recent requests</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div style="margin-top: 20px;">
+        <a href="/logs" class="btn">View All Logs</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Auto-refresh stats every 30 seconds
+    setInterval(function() {
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(data => {
+                // Update stats without full page reload
+                console.log('Stats updated:', data);
+            });
+    }, 30000);
+</script>
+{% endblock %}
