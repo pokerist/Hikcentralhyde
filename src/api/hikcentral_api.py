@@ -8,6 +8,7 @@ import base64
 import uuid
 import json
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 import requests
 from typing import Dict, Optional
 from config import Config
@@ -31,34 +32,43 @@ class HikCentralAPI:
         method: str,
         uri: str,
         headers: Dict,
-        content_md5: str = ""
+        body: str = ""
     ) -> str:
         """
         Generate HMAC-SHA256 signature for request
         
         Args:
             method: HTTP method
-            uri: Request URI
+            uri: Request URI (path from base URL)
             headers: Request headers
-            content_md5: MD5 hash of request body
+            body: Request body string
         
         Returns:
             Base64-encoded signature
         """
-        # Build string to sign
-        sign_headers = "x-ca-key,x-ca-nonce,x-ca-timestamp"
+        # Build string to sign according to HikCentral spec
+        parts = [
+            method,
+            headers.get('Accept', 'application/json')
+        ]
         
-        string_to_sign = (
-            f"{method}\n"
-            f"application/json\n"
-            f"{content_md5}\n"
-            f"application/json;charset=UTF-8\n"
-            f"\n"
-            f"x-ca-key:{headers['X-Ca-Key']}\n"
-            f"x-ca-nonce:{headers['X-Ca-Nonce']}\n"
-            f"x-ca-timestamp:{headers['X-Ca-Timestamp']}\n"
-            f"{uri}"
-        )
+        # Add Content-MD5 only if body exists
+        if body:
+            content_md5 = self._get_content_md5(body)
+            parts.append(content_md5)
+        
+        # Content-Type
+        parts.append(headers.get('Content-Type', 'application/json;charset=UTF-8'))
+        
+        # Custom headers (x-ca-*)
+        parts.append(f"x-ca-key:{headers['X-Ca-Key']}")
+        parts.append(f"x-ca-nonce:{headers['X-Ca-Nonce']}")
+        parts.append(f"x-ca-timestamp:{headers['X-Ca-Timestamp']}")
+        
+        # URI
+        parts.append(uri)
+        
+        string_to_sign = '\n'.join(parts)
         
         # Generate HMAC-SHA256 signature
         signature = hmac.new(
@@ -86,20 +96,19 @@ class HikCentralAPI:
         """
         nonce = str(uuid.uuid4())
         timestamp = str(int(time.time() * 1000))
-        content_md5 = self._get_content_md5(body) if body else ""
         
         headers = {
             'X-Ca-Key': self.app_key,
             'X-Ca-Nonce': nonce,
             'X-Ca-Timestamp': timestamp,
-            'X-Ca-Signature-Headers': 'x-ca-key,x-ca-nonce,x-ca-timestamp',
             'Content-Type': 'application/json;charset=UTF-8',
             'Accept': 'application/json',
             'userId': self.user_id
         }
         
+        # Add Content-MD5 only if body exists
         if body:
-            headers['Content-MD5'] = content_md5
+            headers['Content-MD5'] = self._get_content_md5(body)
         
         return headers
     
@@ -121,17 +130,24 @@ class HikCentralAPI:
             Response data or None on error
         """
         url = f"{self.base_url}{endpoint}"
-        body_str = json.dumps(body, ensure_ascii=False)
+        body_str = json.dumps(body, ensure_ascii=False) if body else ""
         
-        headers = self._get_authenticated_headers(body_str)
+        headers = self._get_authenticated_headers(body_str if body else None)
+        
+        # Build URI for signature
+        # Parse base URL to get path component
+        parsed = urlparse(self.base_url)
+        base_path = parsed.path.rstrip('/') if parsed.path else ''
+        
+        # URI = base_path + endpoint (e.g., "/artemis/api/...")
+        uri = f"{base_path}{endpoint}"
         
         # Generate signature
-        uri = endpoint
         signature = self._generate_signature(
             method,
             uri,
             headers,
-            headers.get('Content-MD5', '')
+            body_str if body else ""
         )
         headers['X-Ca-Signature'] = signature
         
