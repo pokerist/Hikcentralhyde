@@ -214,9 +214,32 @@ class EventProcessor:
                 logger.error(f"Failed to convert face image to base64: {national_id}")
                 return
             
-            # Prepare dates
-            begin_time = datetime.now().isoformat() + '+02:00'
-            end_time = (datetime.now() + timedelta(days=3650)).isoformat() + '+02:00'  # 10 years
+            # Prepare dates from worker data or use defaults
+            # Convert ISO format to HikCentral format (YYYY-MM-DDTHH:MM:SS+08:00)
+            from dateutil import parser
+            
+            # Get dates from worker data
+            created_at = worker_data.get('createdAt')
+            
+            if created_at:
+                # Parse the ISO date and format it properly
+                dt = parser.parse(created_at)
+                begin_time = dt.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
+            else:
+                # Fallback to now
+                now = datetime.now()
+                begin_time = now.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
+            
+            # Check if there's an end date in worker data
+            valid_until = worker_data.get('validUntil') or worker_data.get('endTime')
+            
+            if valid_until:
+                dt_end = parser.parse(valid_until)
+                end_time = dt_end.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
+            else:
+                # Default to 10 years from begin time
+                dt_begin = parser.parse(created_at) if created_at else datetime.now()
+                end_time = (dt_begin + timedelta(days=3650)).strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
             
             # Split name into family and given names
             full_name = worker_data.get('fullName', '')
@@ -224,10 +247,14 @@ class EventProcessor:
             family_name = name_parts[0] if name_parts else ''
             given_name = name_parts[1] if len(name_parts) > 1 else ''
             
+            # Get worker ID from event
+            worker_id = worker_data.get('id', national_id)
+            
             # Add person to HikCentral
-            logger.info(f"Adding person to HikCentral: {national_id}")
+            logger.info(f"Adding person to HikCentral: {national_id} (Worker ID: {worker_id})")
+            logger.info(f"Begin time: {begin_time}, End time: {end_time}")
             person_id = self.hikcentral.add_person(
-                person_code=national_id,
+                person_code=worker_id,  # Use worker.id not nationalIdNumber
                 family_name=family_name,
                 given_name=given_name,
                 gender=1,  # Male by default

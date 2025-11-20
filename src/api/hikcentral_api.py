@@ -161,8 +161,15 @@ class HikCentralAPI:
         )
         headers['X-Ca-Signature'] = signature
         
-        # DEBUG: Log headers being sent
-        logger.info(f"Headers being sent to HikCentral: {headers}")
+        # DEBUG: Log complete request details
+        logger.info(f"=== HikCentral Request Details ===")
+        logger.info(f"URL: {url}")
+        logger.info(f"Method: {method}")
+        logger.info(f"Headers: {json.dumps(headers, indent=2, ensure_ascii=False)}")
+        logger.info(f"Body string for MD5: {repr(body_str)}")
+        logger.info(f"Body length: {len(body_str) if body_str else 0} bytes")
+        logger.info(f"Body MD5: {headers.get('Content-MD5', 'N/A')}")
+        logger.info(f"==================================")
         
         start_time = time.time()
         error = None
