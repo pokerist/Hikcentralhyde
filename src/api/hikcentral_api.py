@@ -63,15 +63,14 @@ class HikCentralAPI:
             headers.get('Accept', 'application/json')
         ]
         
-        # Add Content-MD5 only if body exists
-        if body:
-            content_md5 = self._get_content_md5(body)
-            parts.append(content_md5)
+        # Add Content-MD5 if present in headers
+        if 'Content-MD5' in headers:
+            parts.append(headers['Content-MD5'])
         
         # Content-Type
         parts.append(headers.get('Content-Type', 'application/json;charset=UTF-8'))
         
-        # Custom headers (x-ca-*)
+        # Custom headers (x-ca-*) - MUST be in alphabetical order
         parts.append(f"x-ca-key:{headers['X-Ca-Key']}")
         parts.append(f"x-ca-nonce:{headers['X-Ca-Nonce']}")
         parts.append(f"x-ca-timestamp:{headers['X-Ca-Timestamp']}")
@@ -80,6 +79,9 @@ class HikCentralAPI:
         parts.append(uri)
         
         string_to_sign = '\n'.join(parts)
+        
+        # Log for debugging
+        logger.debug(f"String to sign:\n{string_to_sign}")
         
         # Generate HMAC-SHA256 signature
         signature = hmac.new(

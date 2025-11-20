@@ -153,18 +153,21 @@ sudo systemctl restart hydepark-sync
 - تأكد من `HIKCENTRAL_BASE_URL` بدون `/artemis`
 - تأكد من `APP_KEY` و `APP_SECRET` صحيحين
 - شغّل: `python3 test_hikcentral_signature.py`
+- **السبب الشائع:** الـ signature بيتولد غلط بسبب ترتيب الـ headers
+- **الحل:** تأكد إن النسخة المحدّثة من `hikcentral_api.py` مسطبة
 
-### المشكلة 4: الخدمة لا تبدأ
+### المشكلة 4: `Invalid Signature! and StringToSign` في السجلات
 ```bash
-# عرض الأخطاء
-sudo journalctl -u hydepark-sync -n 50 --no-pager | grep -i error
-
-# اختبار الإعدادات
+# اختبر الـ signature
 cd /opt/hydepark-sync
 source venv/bin/activate
-python3 test_config.py
-deactivate
+python3 test_hikcentral_signature.py
 ```
+
+**إذا طلع ❌ SIGNATURE MISMATCH:**
+- تأكد من `HIKCENTRAL_BASE_URL=https://IP:PORT` (بدون `/artemis`)
+- تأكد من `APP_KEY` و `APP_SECRET` صحيحين
+- أعد نشر النظام: `cd ~/Hikcentralhyde/src && bash deploy.sh`
 
 ---
 

@@ -22,9 +22,12 @@ def build_string_to_sign(method, accept, content_type, app_key, nonce, timestamp
         parts.append(content_md5)
     
     parts.append(content_type)
+    
+    # x-ca headers MUST be in alphabetical order
     parts.append(f"x-ca-key:{app_key}")
     parts.append(f"x-ca-nonce:{nonce}")
     parts.append(f"x-ca-timestamp:{timestamp}")
+    
     parts.append(uri)
     
     return '\n'.join(parts)
