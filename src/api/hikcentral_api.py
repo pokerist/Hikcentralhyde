@@ -70,10 +70,10 @@ class HikCentralAPI:
         # Content-Type
         parts.append(headers.get('Content-Type', 'application/json;charset=UTF-8'))
         
-        # Custom headers (x-ca-*) - MUST be in alphabetical order
-        parts.append(f"x-ca-key:{headers['X-Ca-Key']}")
-        parts.append(f"x-ca-nonce:{headers['X-Ca-Nonce']}")
-        parts.append(f"x-ca-timestamp:{headers['X-Ca-Timestamp']}")
+        # Custom headers (x-ca-*) - MUST be in alphabetical order and lowercase
+        parts.append(f"x-ca-key:{headers.get('x-ca-key', headers.get('X-Ca-Key'))}")
+        parts.append(f"x-ca-nonce:{headers.get('x-ca-nonce', headers.get('X-Ca-Nonce'))}")
+        parts.append(f"x-ca-timestamp:{headers.get('x-ca-timestamp', headers.get('X-Ca-Timestamp'))}")
         
         # URI
         parts.append(uri)
@@ -111,9 +111,9 @@ class HikCentralAPI:
         timestamp = str(int(time.time() * 1000))
         
         headers = {
-            'X-Ca-Key': self.app_key,
-            'X-Ca-Nonce': nonce,
-            'X-Ca-Timestamp': timestamp,
+            'x-ca-key': self.app_key,
+            'x-ca-nonce': nonce,
+            'x-ca-timestamp': timestamp,
             'Content-Type': 'application/json;charset=UTF-8',
             'Accept': 'application/json',
             'userId': self.user_id
