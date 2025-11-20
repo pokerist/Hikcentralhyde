@@ -46,37 +46,81 @@ class EventProcessor:
             event: Event object from API
         """
         event_type = event.get('type')
-        event_data = event.get('data', {})
+        event_id = event.get('id', 'unknown')
         
-        logger.info(f"Processing event: {event_type}")
+        logger.info(f"Processing event: {event_type} (ID: {event_id})")
         
         try:
             if event_type == 'worker.created':
-                self.handle_worker_created(event_data)
+                # Handle both formats:
+                # 1. {"type": "worker.created", "data": {...}}
+                # 2. {"type": "worker.created", "workers": [{...}]}
+                workers = event.get('workers', [])
+                event_data = event.get('data', {})
+                
+                if workers:
+                    logger.info(f"Processing {len(workers)} workers from event")
+                    for worker in workers:
+                        self.handle_worker_created(worker)
+                elif event_data:
+                    self.handle_worker_created(event_data)
+                else:
+                    logger.error(f"No worker data found in event {event_id}")
             
             elif event_type == 'workers.bulk_created':
-                workers = event_data.get('workers', [])
+                workers = event.get('data', {}).get('workers', [])
+                if not workers:
+                    workers = event.get('workers', [])
+                
+                logger.info(f"Processing {len(workers)} workers in bulk")
                 for worker in workers:
                     self.handle_worker_created(worker)
             
             elif event_type == 'worker.blocked':
-                self.handle_worker_blocked(event_data)
+                workers = event.get('workers', [])
+                event_data = event.get('data', {})
+                
+                if workers:
+                    for worker in workers:
+                        self.handle_worker_blocked(worker)
+                elif event_data:
+                    self.handle_worker_blocked(event_data)
             
             elif event_type == 'unit.workers_blocked':
-                workers = event_data.get('workers', [])
+                workers = event.get('data', {}).get('workers', [])
+                if not workers:
+                    workers = event.get('workers', [])
+                
                 for worker in workers:
                     self.handle_worker_blocked(worker)
             
             elif event_type == 'worker.deleted' or \
                  event_type == 'user.expired_workers_deleted' or \
                  event_type == 'user.deleted_workers_deleted':
-                self.handle_worker_deleted(event_data)
+                workers = event.get('workers', [])
+                event_data = event.get('data', {})
+                
+                if workers:
+                    for worker in workers:
+                        self.handle_worker_deleted(worker)
+                elif event_data:
+                    self.handle_worker_deleted(event_data)
             
             elif event_type == 'worker.unblocked':
-                self.handle_worker_unblocked(event_data)
+                workers = event.get('workers', [])
+                event_data = event.get('data', {})
+                
+                if workers:
+                    for worker in workers:
+                        self.handle_worker_unblocked(worker)
+                elif event_data:
+                    self.handle_worker_unblocked(event_data)
             
             elif event_type == 'unit.workers_unblocked':
-                workers = event_data.get('workers', [])
+                workers = event.get('data', {}).get('workers', [])
+                if not workers:
+                    workers = event.get('workers', [])
+                
                 for worker in workers:
                     self.handle_worker_unblocked(worker)
             
@@ -84,15 +128,23 @@ class EventProcessor:
                 logger.warning(f"Unknown event type: {event_type}")
         
         except Exception as e:
-            logger.error(f"Error processing event {event_type}: {e}")
+            logger.error(f"Error processing event {event_type} (ID: {event_id}): {e}", exc_info=True)
     
     def handle_worker_created(self, worker_data: Dict):
         """Handle worker creation event"""
         try:
             national_id = worker_data.get('nationalIdNumber')
-            worker_id = worker_data.get('id')
+            worker_id = worker_data.get('workerId') or worker_data.get('id')
             
-            logger.info(f"Creating worker: {national_id}")
+            if not national_id:
+                logger.error(f"No national ID in worker data: {worker_data}")
+                return
+            
+            if not worker_id:
+                logger.error(f"No worker ID in worker data: {worker_data}")
+                return
+            
+            logger.info(f"Creating worker: {national_id} (Worker ID: {worker_id})")
             
             # Check for existing worker
             existing = self.workers_db.get_by_national_id(national_id)
@@ -101,12 +153,14 @@ class EventProcessor:
                 return
             
             # Download images
-            face_url = worker_data.get('facePhotoUrl')
-            id_card_url = worker_data.get('idCardImageUrl')
+            face_url = worker_data.get('facePhoto') or worker_data.get('facePhotoUrl')
+            id_card_url = worker_data.get('nationalIdImage') or worker_data.get('idCardImageUrl')
             
             if not face_url:
                 logger.error(f"No face photo URL for worker: {national_id}")
                 return
+            
+            logger.info(f"Downloading images for worker: {national_id}")
             
             # Save images locally
             face_filename = f"{national_id}_face.jpg"
@@ -119,10 +173,16 @@ class EventProcessor:
                 logger.error(f"Failed to download face photo for worker: {national_id}")
                 return
             
+            logger.info(f"Face photo downloaded: {face_path}")
+            
             if id_card_url:
-                self.supabase.download_image(id_card_url, id_card_path)
+                if self.supabase.download_image(id_card_url, id_card_path):
+                    logger.info(f"ID card downloaded: {id_card_path}")
+                else:
+                    logger.warning(f"Failed to download ID card for worker: {national_id}")
             
             # Check for duplicate faces
+            logger.info(f"Checking for duplicate faces for worker: {national_id}")
             existing_workers = self.workers_db.get_all_workers()
             existing_face_paths = [
                 w.get('face_image_path')
@@ -145,7 +205,10 @@ class EventProcessor:
                 )
                 return
             
+            logger.info(f"No duplicate faces found for worker: {national_id}")
+            
             # Convert face image to base64
+            logger.info(f"Converting face image to base64 for worker: {national_id}")
             face_base64 = self.image_processor.image_to_base64(face_path)
             if not face_base64:
                 logger.error(f"Failed to convert face image to base64: {national_id}")
@@ -162,6 +225,7 @@ class EventProcessor:
             given_name = name_parts[1] if len(name_parts) > 1 else ''
             
             # Add person to HikCentral
+            logger.info(f"Adding person to HikCentral: {national_id}")
             person_id = self.hikcentral.add_person(
                 person_code=national_id,
                 family_name=family_name,
@@ -178,11 +242,17 @@ class EventProcessor:
                 logger.error(f"Failed to add person to HikCentral: {national_id}")
                 return
             
+            logger.info(f"Person added to HikCentral with ID: {person_id}")
+            
             # Add to privilege group (grant access)
+            logger.info(f"Adding person to privilege group: {national_id}")
             if not self.hikcentral.add_to_privilege_group(person_id):
                 logger.warning(f"Failed to add person to privilege group: {national_id}")
+            else:
+                logger.info(f"Person added to privilege group: {national_id}")
             
             # Update local database
+            logger.info(f"Updating local database for worker: {national_id}")
             self.workers_db.upsert_worker({
                 'workerId': worker_id,
                 'nationalIdNumber': national_id,
@@ -198,16 +268,17 @@ class EventProcessor:
             })
             
             # Update status in online application
+            logger.info(f"Updating worker status in Supabase: {national_id}")
             self.supabase.update_worker_status(
                 worker_id=worker_id,
                 status='approved',
                 external_id=person_id
             )
             
-            logger.info(f"Successfully created worker in HikCentral: {national_id} (Person ID: {person_id})")
+            logger.info(f"✓ Successfully created worker in HikCentral: {national_id} (Person ID: {person_id})")
         
         except Exception as e:
-            logger.error(f"Error handling worker creation: {e}")
+            logger.error(f"Error handling worker creation: {e}", exc_info=True)
     
     def handle_worker_blocked(self, worker_data: Dict):
         """Handle worker blocking event"""

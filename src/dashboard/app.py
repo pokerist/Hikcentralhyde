@@ -57,7 +57,22 @@ def dashboard():
     stats = request_logger.get_stats()
     
     # Get recent logs
-    recent_logs = request_logger.get_recent_logs(limit=10)
+    recent_logs = request_logger.get_recent_logs(limit=20)
+    
+    # Identify important events (events with worker data)
+    important_logs = []
+    for log in recent_logs:
+        response_body = log.get('response_body', {})
+        
+        # Check if this response contains events
+        if isinstance(response_body, dict) and 'events' in response_body:
+            events = response_body.get('events', [])
+            if events and len(events) > 0:
+                # This is an important log with actual events
+                log['has_events'] = True
+                log['event_count'] = len(events)
+                log['event_types'] = [e.get('type') for e in events]
+                important_logs.append(log)
     
     # Get worker counts
     all_workers = workers_db.get_all_workers()
@@ -67,7 +82,8 @@ def dashboard():
     return render_template(
         'dashboard.html',
         stats=stats,
-        recent_logs=recent_logs,
+        recent_logs=recent_logs[:10],  # Show last 10 for recent activity
+        important_logs=important_logs[:5],  # Show last 5 important events
         total_workers=len(all_workers),
         approved_workers=approved_workers,
         blocked_workers=blocked_workers
