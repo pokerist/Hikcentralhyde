@@ -2,6 +2,8 @@
 
 Local synchronization bridge between Supabase (online) and HikCentral (offline LAN).
 
+**Clean Installation** - This version automatically cleans old installations before deploying.
+
 ---
 
 ## Quick Install
@@ -11,7 +13,13 @@ cd ~/Hikcentralhyde/src
 bash deploy.sh
 ```
 
-Follow prompts. Edit `.env` after installation.
+The deploy script will:
+- Stop and backup any existing installation
+- Clean old files (preserving data/ and .env)
+- Install fresh version
+- Restore your data and configuration
+
+Follow prompts. Edit `.env` after installation if needed.
 
 ---
 
@@ -35,8 +43,8 @@ SUPABASE_URL=https://your-project.supabase.co/functions/v1/your-function
 SUPABASE_BEARER_TOKEN=eyJ...
 SUPABASE_API_KEY=your-api-key
 
-# HikCentral
-HIKCENTRAL_BASE_URL=https://10.127.0.2/artemis
+# HikCentral (use IP:PORT format, /artemis will be added automatically)
+HIKCENTRAL_BASE_URL=https://10.127.0.2
 HIKCENTRAL_APP_KEY=your-app-key
 HIKCENTRAL_APP_SECRET=your-secret
 

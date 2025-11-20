@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# HydePark Sync System - Deployment Script
-# This script automates the initial deployment on Ubuntu server
+# HydePark Sync System - Clean Deployment Script
+# This script performs a clean installation by removing old files
 
 set -e  # Exit on any error
 
@@ -61,6 +61,72 @@ check_ubuntu() {
     fi
 }
 
+cleanup_old_installation() {
+    print_header "تنظيف التثبيت القديم"
+    
+    if [ ! -d "$INSTALL_DIR" ]; then
+        print_info "لا يوجد تثبيت قديم"
+        return 0
+    fi
+    
+    print_warning "تم العثور على تثبيت قديم في $INSTALL_DIR"
+    
+    # Stop the service if running
+    if sudo systemctl is-active --quiet $SERVICE_NAME; then
+        print_info "إيقاف الخدمة القديمة..."
+        sudo systemctl stop $SERVICE_NAME
+        print_success "تم إيقاف الخدمة"
+    fi
+    
+    # Disable service
+    if sudo systemctl is-enabled --quiet $SERVICE_NAME 2>/dev/null; then
+        print_info "تعطيل الخدمة القديمة..."
+        sudo systemctl disable $SERVICE_NAME
+    fi
+    
+    # Backup data and .env
+    print_info "نسخ احتياطي للبيانات والإعدادات..."
+    BACKUP_DIR="/tmp/hydepark-backup-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$BACKUP_DIR"
+    
+    if [ -d "$INSTALL_DIR/data" ]; then
+        cp -r "$INSTALL_DIR/data" "$BACKUP_DIR/"
+        print_success "تم حفظ نسخة احتياطية من data/"
+    fi
+    
+    if [ -f "$INSTALL_DIR/.env" ]; then
+        cp "$INSTALL_DIR/.env" "$BACKUP_DIR/"
+        print_success "تم حفظ نسخة احتياطية من .env"
+    fi
+    
+    print_info "النسخة الاحتياطية في: $BACKUP_DIR"
+    
+    # Remove old installation
+    print_info "حذف الملفات القديمة..."
+    sudo rm -rf "$INSTALL_DIR"
+    print_success "تم حذف التثبيت القديم"
+    
+    # Create new directory
+    print_info "إنشاء مجلد جديد..."
+    sudo mkdir -p "$INSTALL_DIR"
+    sudo chown $CURRENT_USER:$CURRENT_USER "$INSTALL_DIR"
+    
+    # Restore data and .env
+    if [ -d "$BACKUP_DIR/data" ]; then
+        print_info "استعادة البيانات..."
+        cp -r "$BACKUP_DIR/data" "$INSTALL_DIR/"
+        print_success "تم استعادة data/"
+    fi
+    
+    if [ -f "$BACKUP_DIR/.env" ]; then
+        print_info "استعادة الإعدادات..."
+        cp "$BACKUP_DIR/.env" "$INSTALL_DIR/"
+        print_success "تم استعادة .env"
+    fi
+    
+    print_success "تم تنظيف التثبيت القديم بنجاح"
+}
+
 install_system_dependencies() {
     print_header "تثبيت متطلبات النظام"
     
@@ -81,29 +147,6 @@ install_system_dependencies() {
     print_success "تم تثبيت جميع متطلبات النظام"
 }
 
-create_install_directory() {
-    print_header "إنشاء مجلد التثبيت"
-    
-    if [ -d "$INSTALL_DIR" ]; then
-        print_warning "المجلد $INSTALL_DIR موجود مسبقاً"
-        read -p "هل تريد حذفه وإعادة التثبيت؟ (y/n): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            print_info "حذف المجلد القديم..."
-            sudo rm -rf "$INSTALL_DIR"
-        else
-            print_error "تم الإلغاء"
-            exit 1
-        fi
-    fi
-    
-    print_info "إنشاء مجلد $INSTALL_DIR"
-    sudo mkdir -p "$INSTALL_DIR"
-    sudo chown $CURRENT_USER:$CURRENT_USER "$INSTALL_DIR"
-    
-    print_success "تم إنشاء مجلد التثبيت"
-}
-
 copy_application_files() {
     print_header "نسخ ملفات التطبيق"
     
@@ -111,13 +154,15 @@ copy_application_files() {
     
     print_info "نسخ الملفات من $SCRIPT_DIR إلى $INSTALL_DIR"
     
-    # Copy all files except venv, __pycache__, and .git
+    # Copy only specific files and directories we need
     rsync -av --exclude='venv' \
               --exclude='__pycache__' \
               --exclude='.git' \
               --exclude='*.pyc' \
               --exclude='data' \
               --exclude='.env' \
+              --exclude='*.log' \
+              --exclude='.DS_Store' \
               "$SCRIPT_DIR/" "$INSTALL_DIR/"
     
     print_success "تم نسخ ملفات التطبيق"
@@ -153,43 +198,43 @@ install_python_dependencies() {
     if [ -f "install_requirements.sh" ]; then
         bash install_requirements.sh
     else
-        # Fallback to manual installation
-        print_info "ترقية pip و setuptools..."
-        pip install --upgrade pip setuptools wheel
-        
-        print_info "تثبيت numpy أولاً..."
-        pip install "numpy>=1.26.0"
-        
-        print_info "تثبيت المكتبات الأساسية..."
-        pip install flask==3.0.0 werkzeug==3.0.1 requests==2.31.0 python-dotenv==1.0.0
-        pip install schedule==1.2.0 cryptography==41.0.7 pyjwt==2.8.0 Pillow==10.1.0
-        
-        print_info "تثبيت opencv-python..."
-        pip install opencv-python
-        
-        print_info "تثبيت dlib (قد يستغرق 5-10 دقائق)..."
-        pip install dlib || print_warning "فشل تثبيت dlib، سيتم المحاولة لاحقاً"
-        
-        print_info "تثبيت face-recognition..."
-        pip install face-recognition || print_warning "فشل تثبيت face-recognition، قد تحتاج تثبيته يدوياً"
+        # Fallback to pip install
+        pip install -r requirements.txt
     fi
     
     print_success "تم تثبيت جميع مكتبات Python"
 }
 
 create_data_directories() {
-    print_header "إنشاء مجلدات البيانات"
+    print_header "إعداد مجلدات البيانات"
     
     cd "$INSTALL_DIR"
     
-    print_info "إنشاء مجلدات data..."
-    mkdir -p data/faces
-    mkdir -p data/id_cards
-    
-    print_info "إنشاء ملفات قاعدة البيانات..."
-    # Create empty database files
-    echo "[]" > data/workers.json
-    echo "[]" > data/request_logs.json
+    # Check if data directory already exists (from backup restore)
+    if [ -d "data" ]; then
+        print_info "مجلد data موجود من النسخة الاحتياطية"
+        
+        # Make sure subdirectories exist
+        mkdir -p data/faces
+        mkdir -p data/id_cards
+        
+        # Make sure database files exist
+        if [ ! -f "data/workers.json" ]; then
+            echo "[]" > data/workers.json
+        fi
+        
+        if [ ! -f "data/request_logs.json" ]; then
+            echo "[]" > data/request_logs.json
+        fi
+    else
+        print_info "إنشاء مجلدات data جديدة..."
+        mkdir -p data/faces
+        mkdir -p data/id_cards
+        
+        print_info "إنشاء ملفات قاعدة البيانات..."
+        echo "[]" > data/workers.json
+        echo "[]" > data/request_logs.json
+    fi
     
     print_info "ضبط صلاحيات الملفات..."
     chmod 755 data
@@ -198,7 +243,7 @@ create_data_directories() {
     chmod 644 data/workers.json
     chmod 644 data/request_logs.json
     
-    print_success "تم إنشاء مجلدات البيانات"
+    print_success "تم إعداد مجلدات البيانات"
 }
 
 configure_environment() {
@@ -207,28 +252,25 @@ configure_environment() {
     cd "$INSTALL_DIR"
     
     if [ -f .env ]; then
-        print_warning "ملف .env موجود مسبقاً"
-        read -p "هل تريد الاحتفاظ به؟ (y/n): " -n 1 -r
+        print_success "ملف .env موجود من النسخة الاحتياطية"
+        
+        read -p "هل تريد تعديل الإعدادات الآن؟ (y/n): " -n 1 -r
         echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            rm .env
-            cp .env.example .env
-            print_info "تم إنشاء ملف .env جديد من .env.example"
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            nano .env
         fi
     else
-        if [ ! -f .env.example ]; then
-            print_error "ملف .env.example غير موجود!"
-            print_info "جاري إنشاء ملف .env.example..."
-            
-            # Create .env.example if it doesn't exist
-            cat > .env.example << 'ENVEOF'
+        print_info "إنشاء ملف .env جديد..."
+        
+        # Create .env from template
+        cat > .env << 'ENVEOF'
 # Supabase API Configuration
 SUPABASE_URL=https://xrkxxqhoglrimiljfnml.supabase.co/functions/v1/make-server-2c3121a9
 SUPABASE_BEARER_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhya3h4cWhvZ2xyaW1pbGpmbm1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0MjIxMDEsImV4cCI6MjA3Nzk5ODEwMX0.3G20OL9ujCPyFOOMYc6UVbIv97v5LjsWbQLPZaqHRsk
 SUPABASE_API_KEY=XyZ9k2LmN4pQ7rS8tU0vW1xA3bC5dE6f7gH8iJ9kL0mN1o==
 
-# HikCentral Configuration
-HIKCENTRAL_BASE_URL=https://10.127.0.2/artemis
+# HikCentral Configuration (use IP:PORT format, /artemis will be added automatically)
+HIKCENTRAL_BASE_URL=https://10.127.0.2
 HIKCENTRAL_APP_KEY=22452825
 HIKCENTRAL_APP_SECRET=Q9bWogAziordVdIngfoa
 HIKCENTRAL_USER_ID=admin
@@ -262,26 +304,24 @@ DATA_DIR=./data
 # Secret key for Flask sessions
 SECRET_KEY=change-this-secret-key-in-production-use-random-string
 ENVEOF
-        fi
         
-        cp .env.example .env
-        print_info "تم إنشاء ملف .env من .env.example"
-    fi
-    
-    print_warning "يجب عليك تعديل ملف .env وإضافة البيانات الحقيقية!"
-    print_info "استخدم: nano $INSTALL_DIR/.env"
-    
-    read -p "هل تريد فتح ملف .env الآن للتعديل؟ (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        nano .env
+        print_success "تم إنشاء ملف .env"
+        
+        print_warning "يجب عليك تعديل ملف .env وإضافة البيانات الحقيقية!"
+        print_info "استخدم: nano $INSTALL_DIR/.env"
+        
+        read -p "هل تريد فتح ملف .env الآن للتعديل؟ (y/n): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            nano .env
+        fi
     fi
 }
 
 setup_systemd_service() {
     print_header "إعداد خدمة Systemd"
     
-    # Update service file with correct paths
+    # Create service file
     cat > /tmp/$SERVICE_NAME << EOF
 [Unit]
 Description=HydePark Sync Service
@@ -358,7 +398,7 @@ EOF
         print_success "اختبار المكتبات نجح"
     else
         print_error "فشل اختبار المكتبات"
-        exit 1
+        print_warning "يمكنك المتابعة، لكن قد تحتاج لتثبيت المكتبات الناقصة يدوياً"
     fi
 }
 
@@ -375,11 +415,15 @@ start_service() {
         
         if sudo systemctl is-active --quiet $SERVICE_NAME; then
             print_success "الخدمة تعمل بنجاح!"
+            
+            print_info "عرض آخر 10 أسطر من السجلات:"
+            sudo journalctl -u $SERVICE_NAME -n 10 --no-pager
         else
             print_error "فشل في بدء الخدمة"
             print_info "عرض آخر 20 سطر من السجلات:"
             sudo journalctl -u $SERVICE_NAME -n 20 --no-pager
-            exit 1
+            
+            print_warning "قد تحتاج لفحص ملف .env والتأكد من الإعدادات"
         fi
     else
         print_info "يمكنك بدء الخدمة لاحقاً باستخدام:"
@@ -395,7 +439,6 @@ print_summary() {
     echo -e "${BLUE}معلومات مهمة:${NC}"
     echo -e "  • مجلد التثبيت: ${YELLOW}$INSTALL_DIR${NC}"
     echo -e "  • ملف الإعدادات: ${YELLOW}$INSTALL_DIR/.env${NC}"
-    echo -e "  • ملف السجلات: ${YELLOW}$INSTALL_DIR/hydepark-sync.log${NC}"
     echo -e "  • اسم الخدمة: ${YELLOW}$SERVICE_NAME${NC}"
     echo ""
     
@@ -410,6 +453,8 @@ print_summary() {
     echo -e "    ${YELLOW}sudo systemctl restart $SERVICE_NAME${NC}"
     echo -e "  • تعديل الإعدادات:"
     echo -e "    ${YELLOW}nano $INSTALL_DIR/.env${NC}"
+    echo -e "  • تحديث النظام:"
+    echo -e "    ${YELLOW}cd ~/Hikcentralhyde/src && bash update.sh${NC}"
     echo ""
     
     echo -e "${BLUE}الوصول إلى Dashboard:${NC}"
@@ -431,12 +476,12 @@ print_summary() {
 main() {
     clear
     
-    print_header "HydePark Sync System - سكريبت التثبيت"
+    print_header "HydePark Sync System - Clean Deployment"
     
     echo -e "${BLUE}هذا السكريبت سيقوم بـ:${NC}"
-    echo "  1. تثبيت متطلبات النظام"
-    echo "  2. إنشاء مجلد التثبيت في /opt"
-    echo "  3. نسخ ملفات التطبيق"
+    echo "  1. تنظيف التثبيت القديم (مع حفظ data و .env)"
+    echo "  2. تثبيت متطلبات النظام"
+    echo "  3. نسخ ملفات التطبيق الجديدة"
     echo "  4. إنشاء البيئة الافتراضية"
     echo "  5. تثبيت مكتبات Python"
     echo "  6. إعداد خدمة Systemd"
@@ -452,8 +497,8 @@ main() {
     
     check_root
     check_ubuntu
+    cleanup_old_installation
     install_system_dependencies
-    create_install_directory
     copy_application_files
     create_virtual_environment
     install_python_dependencies

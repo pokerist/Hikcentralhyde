@@ -106,6 +106,8 @@ update_code() {
               --exclude='*.pyc' \
               --exclude='data' \
               --exclude='.env' \
+              --exclude='*.log' \
+              --exclude='.DS_Store' \
               "$SCRIPT_DIR/" "$INSTALL_DIR/"
     
     print_success "تم تحديث الكود"

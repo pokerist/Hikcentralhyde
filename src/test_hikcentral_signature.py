@@ -5,7 +5,12 @@ Test HikCentral signature generation against known good example
 import hmac
 import hashlib
 import base64
+import sys
+import os
 from urllib.parse import urlparse
+
+# Add src directory to path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 def build_string_to_sign(method, accept, content_type, app_key, nonce, timestamp, uri, content_md5=""):
@@ -47,44 +52,27 @@ base_url = 'https://10.19.133.55:443/artemis'
 endpoint = '/artemis/api/common/v1/version'
 body = ''  # No body in example
 
-# Parse base URL
-parsed = urlparse(base_url)
-base_path = parsed.path.rstrip('/') if parsed.path else ''
-port = parsed.port
-
 print("=" * 60)
 print("HikCentral Signature Test")
 print("=" * 60)
 print()
+print(f"Base URL: {base_url}")
+print(f"Endpoint: {endpoint}")
+print()
 
-# Variant A: path-only
-uri_a = f"{base_path}{endpoint}"
-string_a = build_string_to_sign(method, accept, content_type, app_key, nonce, timestamp, uri_a)
-sig_a = generate_signature(string_a, app_secret)
+# The CORRECT URI should be just the endpoint (which already includes /artemis)
+correct_uri = endpoint
+string_correct = build_string_to_sign(method, accept, content_type, app_key, nonce, timestamp, correct_uri)
+sig_correct = generate_signature(string_correct, app_secret)
 
-print('--- Variant A: PATH-ONLY ---')
-print(f'URI used for sign: {uri_a}')
+print('--- CORRECT IMPLEMENTATION ---')
+print(f'URI for signature: {correct_uri}')
 print('STRING_TO_SIGN:')
-print(string_a)
+print(string_correct)
 print()
 print('SIGNATURE:')
-print(sig_a)
+print(sig_correct)
 print()
-
-# Variant B: include port (if available)
-if port:
-    uri_b = f"{base_path}:{port}{endpoint}"
-    string_b = build_string_to_sign(method, accept, content_type, app_key, nonce, timestamp, uri_b)
-    sig_b = generate_signature(string_b, app_secret)
-    
-    print('--- Variant B: INCLUDE-PORT ---')
-    print(f'URI used for sign: {uri_b}')
-    print('STRING_TO_SIGN:')
-    print(string_b)
-    print()
-    print('SIGNATURE:')
-    print(sig_b)
-    print()
 
 print("=" * 60)
 print("Now test with our actual implementation:")
@@ -93,6 +81,36 @@ print()
 
 # Test our implementation
 try:
+    # Mock the Config to avoid dotenv dependency
+    class MockConfig:
+        HIKCENTRAL_BASE_URL = base_url
+        HIKCENTRAL_APP_KEY = app_key
+        HIKCENTRAL_APP_SECRET = app_secret
+        HIKCENTRAL_USER_ID = "1"
+        HIKCENTRAL_ORG_INDEX_CODE = "test"
+        HIKCENTRAL_PRIVILEGE_GROUP_ID = "1"
+        HIKCENTRAL_VERIFY_SSL = False
+        LOG_API_REQUESTS = False
+    
+    # Mock the config module
+    sys.modules['config'] = type(sys)('config')
+    sys.modules['config'].Config = MockConfig
+    
+    # Mock utils.logger
+    class MockLogger:
+        def info(self, msg): pass
+        def error(self, msg): pass
+        def warning(self, msg): pass
+    
+    class MockRequestLogger:
+        def log_request(self, **kwargs): pass
+    
+    sys.modules['utils'] = type(sys)('utils')
+    sys.modules['utils.logger'] = type(sys)('utils.logger')
+    sys.modules['utils.logger'].logger = MockLogger()
+    sys.modules['utils.logger'].request_logger = MockRequestLogger()
+    
+    # Now import our API
     from api.hikcentral_api import HikCentralAPI
     
     api = HikCentralAPI()
@@ -107,21 +125,25 @@ try:
     }
     
     # Test signature generation
-    test_sig = api._generate_signature(method, uri_a, headers, body)
+    # In our implementation, we pass the full endpoint path
+    test_uri = endpoint  # '/artemis/api/common/v1/version'
+    test_sig = api._generate_signature(method, test_uri, headers, body)
     
     print(f'Our implementation signature: {test_sig}')
-    print(f'Expected signature (Variant A): {sig_a}')
+    print(f'Expected signature: {sig_correct}')
     print()
     
-    if test_sig == sig_a:
-        print('✅ SIGNATURE MATCHES! (Variant A)')
-    elif port and test_sig == sig_b:
-        print('✅ SIGNATURE MATCHES! (Variant B)')
+    if test_sig == sig_correct:
+        print('✅ SIGNATURE MATCHES!')
+        print()
+        print('The implementation is correct!')
     else:
         print('❌ SIGNATURE MISMATCH!')
         print()
+        print('Debugging info:')
+        print(f'Test URI: {test_uri}')
+        print()
         print('Our string_to_sign would be:')
-        # Debug: show what our implementation builds
         parts = [method, accept]
         if body:
             md5_hash = hashlib.md5(body.encode('utf-8')).digest()
@@ -131,7 +153,7 @@ try:
         parts.append(f"x-ca-key:{app_key}")
         parts.append(f"x-ca-nonce:{nonce}")
         parts.append(f"x-ca-timestamp:{timestamp}")
-        parts.append(uri_a)
+        parts.append(test_uri)
         our_string = '\n'.join(parts)
         print(our_string)
 
@@ -141,4 +163,17 @@ except Exception as e:
     traceback.print_exc()
 
 print()
+print("=" * 60)
+print()
+print("IMPORTANT NOTE:")
+print("When calling HikCentral API, make sure:")
+print("1. base_url = 'https://IP:PORT/artemis'")
+print("2. endpoint = '/artemis/api/...' (full path)")
+print("3. URL = base_url + endpoint would be wrong!")
+print("4. URL should be: 'https://IP:PORT' + endpoint")
+print()
+print("OR better:")
+print("1. base_url = 'https://IP:PORT' (no /artemis)")
+print("2. endpoint = '/artemis/api/...' (full path)")
+print("3. URL = base_url + endpoint = 'https://IP:PORT/artemis/api/...'")
 print("=" * 60)

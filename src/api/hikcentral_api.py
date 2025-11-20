@@ -19,7 +19,18 @@ class HikCentralAPI:
     """Client for HikCentral API interactions with AK/SK authentication"""
     
     def __init__(self):
-        self.base_url = Config.HIKCENTRAL_BASE_URL
+        # Clean base URL - remove any trailing path
+        base_url = Config.HIKCENTRAL_BASE_URL
+        # If base_url ends with /artemis or similar, strip it
+        # We want just https://IP:PORT
+        if base_url:
+            from urllib.parse import urlparse
+            parsed = urlparse(base_url)
+            # Rebuild URL without path
+            self.base_url = f"{parsed.scheme}://{parsed.netloc}"
+        else:
+            self.base_url = base_url
+            
         self.app_key = Config.HIKCENTRAL_APP_KEY
         self.app_secret = Config.HIKCENTRAL_APP_SECRET
         self.user_id = Config.HIKCENTRAL_USER_ID
@@ -122,7 +133,7 @@ class HikCentralAPI:
         Make authenticated request to HikCentral API
         
         Args:
-            endpoint: API endpoint path
+            endpoint: API endpoint path (full path including base path like /artemis/api/...)
             body: Request body
             method: HTTP method
         
@@ -134,13 +145,9 @@ class HikCentralAPI:
         
         headers = self._get_authenticated_headers(body_str if body else None)
         
-        # Build URI for signature
-        # Parse base URL to get path component
-        parsed = urlparse(self.base_url)
-        base_path = parsed.path.rstrip('/') if parsed.path else ''
-        
-        # URI = base_path + endpoint (e.g., "/artemis/api/...")
-        uri = f"{base_path}{endpoint}"
+        # URI for signature is the full endpoint path
+        # The endpoint already includes the base path (e.g., /artemis/api/...)
+        uri = endpoint
         
         # Generate signature
         signature = self._generate_signature(
@@ -242,7 +249,7 @@ class HikCentralAPI:
             'residentFloorNo': 1
         }
         
-        result = self._make_request('/api/resource/v1/person/single/add', body)
+        result = self._make_request('/artemis/api/resource/v1/person/single/add', body)
         
         if result and result.get('code') == '0':
             person_id = result.get('data', {}).get('personId')
@@ -282,7 +289,7 @@ class HikCentralAPI:
             'remark': ''
         }
         
-        result = self._make_request('/api/resource/v1/person/single/update', body)
+        result = self._make_request('/artemis/api/resource/v1/person/single/update', body)
         
         if result and result.get('code') == '0':
             logger.info(f"Successfully updated person: {person_id}")
@@ -295,7 +302,7 @@ class HikCentralAPI:
         """Delete person from HikCentral"""
         body = {'personId': person_id}
         
-        result = self._make_request('/api/resource/v1/person/single/delete', body)
+        result = self._make_request('/artemis/api/resource/v1/person/single/delete', body)
         
         if result and result.get('code') == '0':
             logger.info(f"Successfully deleted person: {person_id}")
@@ -312,7 +319,7 @@ class HikCentralAPI:
             'list': [{'id': person_id}]
         }
         
-        result = self._make_request('/api/acs/v1/privilege/group/single/addPersons', body)
+        result = self._make_request('/artemis/api/acs/v1/privilege/group/single/addPersons', body)
         
         if result and result.get('code') == '0':
             logger.info(f"Successfully added person to privilege group: {person_id}")
@@ -329,7 +336,7 @@ class HikCentralAPI:
             'list': [{'id': person_id}]
         }
         
-        result = self._make_request('/api/acs/v1/privilege/group/single/deletePersons', body)
+        result = self._make_request('/artemis/api/acs/v1/privilege/group/single/deletePersons', body)
         
         if result and result.get('code') == '0':
             logger.info(f"Successfully removed person from privilege group: {person_id}")
