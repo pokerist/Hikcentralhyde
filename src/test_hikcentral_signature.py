@@ -101,9 +101,15 @@ try:
     
     # Mock utils.logger
     class MockLogger:
-        def info(self, msg): pass
-        def error(self, msg): pass
-        def warning(self, msg): pass
+        """Mock logger for testing"""
+        def info(self, msg):
+            pass
+        def error(self, msg):
+            pass
+        def warning(self, msg):
+            pass
+        def debug(self, msg):
+            pass
     
     class MockRequestLogger:
         def log_request(self, **kwargs): pass
