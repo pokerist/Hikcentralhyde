@@ -160,6 +160,9 @@ class HikCentralAPI:
         )
         headers['X-Ca-Signature'] = signature
         
+        # DEBUG: Log headers being sent
+        logger.info(f"Headers being sent to HikCentral: {headers}")
+        
         start_time = time.time()
         error = None
         response_body = None
