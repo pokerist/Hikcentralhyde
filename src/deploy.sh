@@ -149,7 +149,30 @@ install_python_dependencies() {
     print_info "تثبيت المكتبات من requirements.txt..."
     print_warning "قد يستغرق تثبيت dlib و face-recognition عدة دقائق..."
     
-    pip install -r requirements.txt
+    # Use the special installation script
+    if [ -f "install_requirements.sh" ]; then
+        bash install_requirements.sh
+    else
+        # Fallback to manual installation
+        print_info "ترقية pip و setuptools..."
+        pip install --upgrade pip setuptools wheel
+        
+        print_info "تثبيت numpy أولاً..."
+        pip install "numpy>=1.26.0"
+        
+        print_info "تثبيت المكتبات الأساسية..."
+        pip install flask==3.0.0 werkzeug==3.0.1 requests==2.31.0 python-dotenv==1.0.0
+        pip install schedule==1.2.0 cryptography==41.0.7 pyjwt==2.8.0 Pillow==10.1.0
+        
+        print_info "تثبيت opencv-python..."
+        pip install opencv-python
+        
+        print_info "تثبيت dlib (قد يستغرق 5-10 دقائق)..."
+        pip install dlib || print_warning "فشل تثبيت dlib، سيتم المحاولة لاحقاً"
+        
+        print_info "تثبيت face-recognition..."
+        pip install face-recognition || print_warning "فشل تثبيت face-recognition، قد تحتاج تثبيته يدوياً"
+    fi
     
     print_success "تم تثبيت جميع مكتبات Python"
 }
