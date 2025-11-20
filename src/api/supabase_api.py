@@ -23,10 +23,12 @@ class SupabaseAPI:
             'Accept': 'application/json'
         }
         
+        # Supabase Edge Functions require BOTH Bearer token AND API key
+        if self.bearer_token:
+            headers['Authorization'] = f'Bearer {self.bearer_token}'
+        
         if self.api_key:
             headers['X-API-Key'] = self.api_key
-        elif self.bearer_token:
-            headers['Authorization'] = f'Bearer {self.bearer_token}'
         
         return headers
     
