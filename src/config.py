@@ -57,6 +57,13 @@ class Config:
         cls.DATA_DIR.mkdir(exist_ok=True)
         cls.FACES_DIR.mkdir(exist_ok=True)
         cls.ID_CARDS_DIR.mkdir(exist_ok=True)
+        
+        # Create database files if they don't exist
+        if not cls.WORKERS_DB.exists():
+            cls.WORKERS_DB.write_text('[]')
+        
+        if not cls.REQUEST_LOGS_DB.exists():
+            cls.REQUEST_LOGS_DB.write_text('[]')
     
     @classmethod
     def validate(cls):

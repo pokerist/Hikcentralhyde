@@ -59,11 +59,11 @@ def start_dashboard():
 def main():
     """Main entry point"""
     try:
+        # Ensure directories exist first (before validation)
+        Config.ensure_directories()
+        
         # Validate configuration
         Config.validate()
-        
-        # Ensure directories exist
-        Config.ensure_directories()
         
         logger.info("=" * 60)
         logger.info("HydePark Sync System Starting")
@@ -72,6 +72,7 @@ def main():
         logger.info(f"HikCentral URL: {Config.HIKCENTRAL_BASE_URL}")
         logger.info(f"Sync Interval: {Config.SYNC_INTERVAL_SECONDS} seconds")
         logger.info(f"Dashboard: http://{Config.DASHBOARD_HOST}:{Config.DASHBOARD_PORT}")
+        logger.info(f"Data Directory: {Config.DATA_DIR.absolute()}")
         logger.info("=" * 60)
         
         # Start dashboard in separate thread

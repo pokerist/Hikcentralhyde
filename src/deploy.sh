@@ -182,12 +182,21 @@ create_data_directories() {
     
     cd "$INSTALL_DIR"
     
+    print_info "إنشاء مجلدات data..."
     mkdir -p data/faces
     mkdir -p data/id_cards
     
+    print_info "إنشاء ملفات قاعدة البيانات..."
     # Create empty database files
     echo "[]" > data/workers.json
     echo "[]" > data/request_logs.json
+    
+    print_info "ضبط صلاحيات الملفات..."
+    chmod 755 data
+    chmod 755 data/faces
+    chmod 755 data/id_cards
+    chmod 644 data/workers.json
+    chmod 644 data/request_logs.json
     
     print_success "تم إنشاء مجلدات البيانات"
 }
@@ -207,6 +216,54 @@ configure_environment() {
             print_info "تم إنشاء ملف .env جديد من .env.example"
         fi
     else
+        if [ ! -f .env.example ]; then
+            print_error "ملف .env.example غير موجود!"
+            print_info "جاري إنشاء ملف .env.example..."
+            
+            # Create .env.example if it doesn't exist
+            cat > .env.example << 'ENVEOF'
+# Supabase API Configuration
+SUPABASE_URL=https://xrkxxqhoglrimiljfnml.supabase.co/functions/v1/make-server-2c3121a9
+SUPABASE_BEARER_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhya3h4cWhvZ2xyaW1pbGpmbm1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0MjIxMDEsImV4cCI6MjA3Nzk5ODEwMX0.3G20OL9ujCPyFOOMYc6UVbIv97v5LjsWbQLPZaqHRsk
+SUPABASE_API_KEY=XyZ9k2LmN4pQ7rS8tU0vW1xA3bC5dE6f7gH8iJ9kL0mN1o==
+
+# HikCentral Configuration
+HIKCENTRAL_BASE_URL=https://10.127.0.2/artemis
+HIKCENTRAL_APP_KEY=22452825
+HIKCENTRAL_APP_SECRET=Q9bWogAziordVdIngfoa
+HIKCENTRAL_USER_ID=admin
+HIKCENTRAL_ORG_INDEX_CODE=1
+HIKCENTRAL_PRIVILEGE_GROUP_ID=3
+
+# SSL Verification
+VERIFY_SSL=False
+
+# Dashboard Configuration
+DASHBOARD_HOST=0.0.0.0
+DASHBOARD_PORT=8080
+DASHBOARD_USERNAME=admin
+DASHBOARD_PASSWORD=change_this_password_immediately
+DASHBOARD_SESSION_TIMEOUT=1800
+DASHBOARD_LOG_RETENTION_DAYS=30
+
+# Logging Configuration
+LOG_API_REQUESTS=true
+MAX_REQUEST_LOGS=10000
+
+# Face Recognition Settings
+FACE_MATCH_THRESHOLD=0.8
+
+# Sync Settings
+SYNC_INTERVAL_SECONDS=60
+
+# System Configuration
+DATA_DIR=./data
+
+# Secret key for Flask sessions
+SECRET_KEY=change-this-secret-key-in-production-use-random-string
+ENVEOF
+        fi
+        
         cp .env.example .env
         print_info "تم إنشاء ملف .env من .env.example"
     fi
