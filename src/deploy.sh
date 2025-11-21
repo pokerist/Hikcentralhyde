@@ -250,11 +250,27 @@ pip install dlib -q || {
 echo "   [4/5] Installing face_recognition..."
 pip install face-recognition -q
 
-# Install face_recognition_models from GitHub
-echo "   [5/5] Installing face recognition models..."
-pip install git+https://github.com/ageitgey/face_recognition_models -q || {
-    print_error "Failed to install face_recognition_models. Please check internet connection."
-}
+# Install face_recognition_models - try PyPI first, then GitHub
+echo "   [5/5] Installing face recognition models (this may take 1-2 minutes)..."
+echo "        Please wait, downloading models..."
+
+# Try PyPI first (faster)
+if pip install face-recognition-models --no-cache-dir 2>&1 | grep -q "Successfully installed"; then
+    print_success "Models installed from PyPI"
+else
+    echo "        PyPI failed, trying GitHub repository..."
+    if pip install git+https://github.com/ageitgey/face_recognition_models 2>&1 | grep -q "Successfully installed"; then
+        print_success "Models installed from GitHub"
+    else
+        # Last resort: try without git
+        echo "        GitHub failed, trying direct download..."
+        pip install https://github.com/ageitgey/face_recognition_models/archive/master.zip || {
+            print_warning "Could not install face_recognition_models automatically."
+            print_warning "The system will work but face detection may be limited."
+            print_warning "You can install it later with: pip install face-recognition-models"
+        }
+    fi
+fi
 
 # Install remaining dependencies
 echo "   Installing remaining packages..."
