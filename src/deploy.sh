@@ -30,6 +30,14 @@ if [ "$EUID" -eq 0 ]; then
    exit 1
 fi
 
+# Check if inside a virtual environment
+if [ -n "$VIRTUAL_ENV" ]; then
+   echo -e "${RED}❌ Don't run from inside a virtual environment!${NC}"
+   echo "   Run: deactivate"
+   echo "   Then: ./deploy.sh"
+   exit 1
+fi
+
 # Function to print step
 print_step() {
     echo ""
@@ -117,10 +125,14 @@ print_success "Cleanup complete"
 print_step "Installing system dependencies (this may take a few minutes)..."
 
 # Update package list
-sudo apt-get update -qq
+echo "   Updating package lists..."
+sudo apt-get update -qq || {
+    print_error "Failed to update package lists. Check your internet connection."
+}
 
 # Install all required system packages
-sudo apt-get install -y -qq \
+echo "   Installing packages (this may take 2-5 minutes)..."
+sudo apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
@@ -143,8 +155,9 @@ sudo apt-get install -y -qq \
     lsof \
     net-tools \
     curl \
-    wget \
-    > /dev/null 2>&1
+    wget || {
+    print_error "Failed to install system packages. Check the output above."
+}
 
 print_success "System dependencies installed"
 
