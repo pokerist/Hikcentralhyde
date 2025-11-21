@@ -262,6 +262,20 @@ class EventProcessor:
             
             if not person_id:
                 logger.error(f"Failed to add person to HikCentral: {national_id}")
+                # Still save to local database with pending status
+                self.workers_db.upsert_worker({
+                    'workerId': worker_id,
+                    'nationalIdNumber': national_id,
+                    'fullName': full_name,
+                    'phoneNumber': worker_data.get('phoneNumber', ''),
+                    'email': worker_data.get('email', ''),
+                    'status': 'pending',
+                    'hikcentral_person_id': '',
+                    'face_image_path': face_path,
+                    'id_card_image_path': id_card_path if id_card_url else '',
+                    'has_privilege_access': False,
+                    'created_at': datetime.utcnow().isoformat()
+                })
                 return
             
             logger.info(f"Person added to HikCentral with ID: {person_id}")

@@ -257,13 +257,22 @@ class HikCentralAPI:
         
         result = self._make_request('/artemis/api/resource/v1/person/single/add', body)
         
-        if result and result.get('code') == '0':
-            person_id = result.get('data', {}).get('personId')
-            logger.info(f"Successfully added person: {person_code} (ID: {person_id})")
-            return person_id
-        else:
-            logger.error(f"Failed to add person: {person_code}")
-            return None
+        # Handle both dict and string responses
+        if result:
+            # If response is a string (like "OK"), parse it or treat as success
+            if isinstance(result, str):
+                logger.info(f"Successfully added person: {person_code} (Response: {result})")
+                # Return the person_code as ID since HikCentral accepted it
+                return person_code
+            
+            # If response is a dict, check the code
+            if isinstance(result, dict) and result.get('code') == '0':
+                person_id = result.get('data', {}).get('personId', person_code)
+                logger.info(f"Successfully added person: {person_code} (ID: {person_id})")
+                return person_id
+        
+        logger.error(f"Failed to add person: {person_code}")
+        return None
     
     def update_person(
         self,
