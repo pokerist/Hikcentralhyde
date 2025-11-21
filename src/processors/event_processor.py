@@ -217,24 +217,45 @@ class EventProcessor:
             # Prepare dates from Supabase data
             from datetime import datetime
             
-            # Get createdAt from worker data (ISO format like: 2025-11-20T21:12:40.643Z)
-            created_at = worker_data.get('createdAt')
+            # Get validFrom and validTo from worker data (format: "2025-11-21")
+            valid_from = worker_data.get('validFrom')
+            valid_to = worker_data.get('validTo')
             
-            if created_at:
-                # Parse ISO date: 2025-11-20T21:12:40.643Z
-                # Convert to HikCentral format: 2025-11-20T21:12:40+02:00
-                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                # Convert to Cairo timezone (+02:00)
-                begin_time = dt.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
-                # Add 10 years
-                from datetime import timedelta
-                end_dt = dt + timedelta(days=3650)
-                end_time = end_dt.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
-            else:
-                # Fallback to now if no createdAt
-                now = datetime.now()
-                begin_time = now.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
-                end_time = (now + timedelta(days=3650)).strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
+            if valid_from and valid_to:
+                # Parse dates: "2025-11-21" -> "2025-11-21T00:00:00+02:00"
+                try:
+                    from_dt = datetime.strptime(valid_from, '%Y-%m-%d')
+                    to_dt = datetime.strptime(valid_to, '%Y-%m-%d')
+                    
+                    # Set time to start of day for validFrom, end of day for validTo
+                    begin_time = from_dt.strftime('%Y-%m-%dT00:00:00') + '+02:00'
+                    end_time = to_dt.strftime('%Y-%m-%dT23:59:59') + '+02:00'
+                    
+                    logger.info(f"Using validFrom/validTo dates: {valid_from} to {valid_to}")
+                except Exception as e:
+                    logger.warning(f"Error parsing validFrom/validTo dates: {e}. Using createdAt fallback.")
+                    valid_from = None
+                    valid_to = None
+            
+            # Fallback: use createdAt if validFrom/validTo not available
+            if not valid_from or not valid_to:
+                created_at = worker_data.get('createdAt')
+                
+                if created_at:
+                    # Parse ISO date: 2025-11-20T21:12:40.643Z
+                    # Convert to HikCentral format: 2025-11-20T21:12:40+02:00
+                    dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    # Convert to Cairo timezone (+02:00)
+                    begin_time = dt.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
+                    # Add 10 years
+                    from datetime import timedelta
+                    end_dt = dt + timedelta(days=3650)
+                    end_time = end_dt.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
+                else:
+                    # Fallback to now if no createdAt
+                    now = datetime.now()
+                    begin_time = now.strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
+                    end_time = (now + timedelta(days=3650)).strftime('%Y-%m-%dT%H:%M:%S') + '+02:00'
             
             # Split name into family and given names
             full_name = worker_data.get('fullName', '')
@@ -260,9 +281,12 @@ class EventProcessor:
                 end_time=end_time
             )
             
+            logger.info(f"HikCentral add_person returned: {person_id}")
+            
             if not person_id:
                 logger.error(f"Failed to add person to HikCentral: {national_id}")
                 # Still save to local database with pending status
+                logger.info(f"Saving worker to local database with pending status: {national_id}")
                 self.workers_db.upsert_worker({
                     'workerId': worker_id,
                     'nationalIdNumber': national_id,
@@ -276,20 +300,24 @@ class EventProcessor:
                     'has_privilege_access': False,
                     'created_at': datetime.utcnow().isoformat()
                 })
+                logger.info(f"Worker saved to local database: {national_id}")
                 return
             
             logger.info(f"Person added to HikCentral with ID: {person_id}")
             
             # Add to privilege group (grant access)
             logger.info(f"Adding person to privilege group: {national_id}")
-            if not self.hikcentral.add_to_privilege_group(person_id):
+            privilege_result = self.hikcentral.add_to_privilege_group(person_id)
+            logger.info(f"Privilege group result: {privilege_result}")
+            
+            if not privilege_result:
                 logger.warning(f"Failed to add person to privilege group: {national_id}")
             else:
                 logger.info(f"Person added to privilege group: {national_id}")
             
             # Update local database
             logger.info(f"Updating local database for worker: {national_id}")
-            self.workers_db.upsert_worker({
+            worker_record = {
                 'workerId': worker_id,
                 'nationalIdNumber': national_id,
                 'fullName': full_name,
@@ -301,7 +329,11 @@ class EventProcessor:
                 'id_card_image_path': id_card_path if id_card_url else '',
                 'has_privilege_access': True,
                 'created_at': datetime.utcnow().isoformat()
-            })
+            }
+            logger.info(f"Worker record prepared: {worker_record}")
+            
+            self.workers_db.upsert_worker(worker_record)
+            logger.info(f"Worker saved to local database successfully: {national_id}")
             
             # Update status in online application
             logger.info(f"Updating worker status in Supabase: {national_id}")
