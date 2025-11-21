@@ -1,70 +1,86 @@
 #!/bin/bash
 
-# HydePark Sync System - Professional Deployment Script
-# Zero-config, zero-hassle deployment
+# HydePark Sync - Automated Deployment Script
+# This script automates the complete setup and deployment of the sync service
 
-set -e
+set -e  # Exit on any error
 
-# Colors
+# Configuration
+APP_NAME="hydepark-sync"
+APP_DIR="/opt/$APP_NAME"
+SERVICE_NAME="$APP_NAME.service"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+USER=$(whoami)
+
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
-# Configuration
-APP_DIR="/opt/hydepark-sync"
-SERVICE_NAME="hydepark-sync"
-DASHBOARD_PORT=8080
-
-echo ""
-echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║   HydePark Sync - Auto Deployment     ║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
-echo ""
-
-# Check if running as root
-if [ "$EUID" -eq 0 ]; then 
-   echo -e "${RED}❌ Don't run as root!${NC}"
-   echo "   Run as regular user, script will ask for sudo when needed"
-   exit 1
-fi
-
-# Check if inside a virtual environment
-if [ -n "$VIRTUAL_ENV" ]; then
-   echo -e "${RED}❌ Don't run from inside a virtual environment!${NC}"
-   echo "   Run: deactivate"
-   echo "   Then: ./deploy.sh"
-   exit 1
-fi
-
-# Function to print step
-print_step() {
+# Print functions
+print_header() {
     echo ""
-    echo -e "${GREEN}▶ $1${NC}"
+    echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║   HydePark Sync - Auto Deployment     ║${NC}"
+    echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
+    echo ""
 }
 
-# Function to print error and exit
+print_step() {
+    echo -e "${BLUE}▶${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}✅${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}⚠️${NC}  $1"
+}
+
 print_error() {
-    echo ""
-    echo -e "${RED}❌ ERROR: $1${NC}"
+    echo -e "${RED}❌${NC} ERROR: $1"
     exit 1
 }
 
-# Function to print warning
-print_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
+# Quick update function - only copy changed files
+quick_update() {
+    print_header
+    print_step "Quick update mode - copying application files..."
+    
+    # Stop service
+    sudo systemctl stop $SERVICE_NAME 2>/dev/null || true
+    
+    # Copy updated files
+    sudo cp -r "$REPO_DIR"/*.py "$APP_DIR/" 2>/dev/null || true
+    sudo cp -r "$REPO_DIR"/api "$APP_DIR/" 2>/dev/null || true
+    sudo cp -r "$REPO_DIR"/processors "$APP_DIR/" 2>/dev/null || true
+    sudo cp -r "$REPO_DIR"/dashboard "$APP_DIR/" 2>/dev/null || true
+    sudo cp -r "$REPO_DIR"/utils "$APP_DIR/" 2>/dev/null || true
+    sudo chown -R $USER:$USER "$APP_DIR"
+    
+    # Restart service
+    sudo systemctl start $SERVICE_NAME
+    
+    print_success "Quick update completed!"
+    print_step "Checking service status..."
+    sudo systemctl status $SERVICE_NAME --no-pager -l
+    
+    exit 0
 }
 
-# Function to print success
-print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
-}
+# Check if --quick flag is passed
+if [ "$1" == "--quick" ] || [ "$1" == "-q" ]; then
+    quick_update
+fi
 
 # ============================================
 # PRE-FLIGHT CHECKS
 # ============================================
 
+print_header
 print_step "Running pre-flight checks..."
 
 # Check Ubuntu/Debian
@@ -111,8 +127,8 @@ if [ -d "$APP_DIR" ]; then
 fi
 
 # Remove old service file
-if [ -f "/etc/systemd/system/$SERVICE_NAME.service" ]; then
-    sudo rm -f /etc/systemd/system/$SERVICE_NAME.service
+if [ -f "/etc/systemd/system/$SERVICE_NAME" ]; then
+    sudo rm -f /etc/systemd/system/$SERVICE_NAME
     sudo systemctl daemon-reload
 fi
 
@@ -319,8 +335,8 @@ print_success "Data directories created"
 print_step "Installing systemd service..."
 
 # Replace user placeholder and install service
-sed "s/%i/$USER/g" $APP_DIR/systemd/$SERVICE_NAME.service | \
-    sudo tee /etc/systemd/system/$SERVICE_NAME.service > /dev/null
+sed "s/%i/$USER/g" $APP_DIR/systemd/$SERVICE_NAME | \
+    sudo tee /etc/systemd/system/$SERVICE_NAME > /dev/null
 
 sudo systemctl daemon-reload
 sudo systemctl enable $SERVICE_NAME > /dev/null 2>&1
