@@ -66,7 +66,7 @@ fi
 
 # Check internet connection (for package installation)
 if ! ping -c 1 8.8.8.8 &> /dev/null; then
-    print_warning "No internet connection detected. Make sure you have local APT mirrors configured."
+    print_warning "No internet connection detected. Installation may fail without internet."
 fi
 
 print_success "Pre-flight checks passed"
@@ -114,22 +114,36 @@ print_success "Cleanup complete"
 # SYSTEM DEPENDENCIES
 # ============================================
 
-print_step "Installing system dependencies..."
+print_step "Installing system dependencies (this may take a few minutes)..."
 
+# Update package list
 sudo apt-get update -qq
+
+# Install all required system packages
 sudo apt-get install -y -qq \
     python3 \
     python3-pip \
     python3-venv \
+    python3-dev \
     git \
     cmake \
     build-essential \
+    pkg-config \
     libssl-dev \
     libffi-dev \
-    python3-dev \
+    libopenblas-dev \
+    liblapack-dev \
+    libatlas-base-dev \
+    gfortran \
+    libhdf5-dev \
+    libhdf5-serial-dev \
+    libhdf5-103 \
+    libqhull-dev \
+    libboost-all-dev \
     lsof \
     net-tools \
     curl \
+    wget \
     > /dev/null 2>&1
 
 print_success "System dependencies installed"
@@ -201,14 +215,51 @@ cd $APP_DIR
 python3 -m venv venv
 source venv/bin/activate
 
-print_step "Installing Python packages (this may take a few minutes)..."
+print_step "Installing Python packages (this will take 5-10 minutes)..."
 
-pip install --upgrade pip -q
-pip install -r requirements.txt -q
+# Upgrade pip first
+pip install --upgrade pip setuptools wheel -q
 
-# Install face recognition models separately (they sometimes fail silently)
-pip install face_recognition_models -q 2>/dev/null || \
-    pip install git+https://github.com/ageitgey/face_recognition_models -q
+# Install numpy first (required for other packages)
+echo "   [1/5] Installing numpy..."
+pip install numpy==1.26.2 -q
+
+# Install cmake (build dependency)
+echo "   [2/5] Installing cmake..."
+pip install cmake -q
+
+# Install dlib (this is the slow one)
+echo "   [3/5] Installing dlib (this takes time)..."
+pip install dlib -q || {
+    print_warning "dlib installation from pip failed, trying compilation..."
+    pip install dlib --no-cache-dir
+}
+
+# Install face_recognition
+echo "   [4/5] Installing face_recognition..."
+pip install face-recognition -q
+
+# Install face_recognition_models from GitHub
+echo "   [5/5] Installing face recognition models..."
+pip install git+https://github.com/ageitgey/face_recognition_models -q || {
+    print_error "Failed to install face_recognition_models. Please check internet connection."
+}
+
+# Install remaining dependencies
+echo "   Installing remaining packages..."
+pip install -r requirements.txt -q 2>/dev/null || true
+
+# Verify critical imports
+echo "   Verifying installation..."
+python3 -c "
+import face_recognition
+import face_recognition_models
+import numpy
+import cv2
+print('   ✓ All critical packages verified')
+" || {
+    print_error "Package verification failed. Some dependencies are missing."
+}
 
 print_success "Python environment ready"
 
@@ -262,7 +313,16 @@ sleep 3
 
 # Check if service is running
 if ! systemctl is-active --quiet $SERVICE_NAME; then
-    print_error "Service failed to start! Check logs: sudo journalctl -u $SERVICE_NAME -n 50"
+    echo ""
+    echo -e "${RED}╔════════════════════════════════════════╗${NC}"
+    echo -e "${RED}║   ❌ Service Failed to Start ❌        ║${NC}"
+    echo -e "${RED}╚════════════════════════════════════════╝${NC}"
+    echo ""
+    echo "Last 30 lines of logs:"
+    echo ""
+    sudo journalctl -u $SERVICE_NAME -n 30 --no-pager
+    echo ""
+    print_error "Service failed to start! See logs above for details."
 fi
 
 print_success "Service started"
@@ -273,46 +333,45 @@ print_success "Service started"
 
 print_step "Running health checks..."
 
-# Run the comprehensive health check
-if [ -f "$APP_DIR/post_deploy_check.sh" ]; then
-    chmod +x "$APP_DIR/post_deploy_check.sh"
-    
-    # Give service more time to fully initialize
-    print_warning "Waiting for service to fully initialize..."
-    sleep 5
-    
-    # Run health check
-    bash "$APP_DIR/post_deploy_check.sh"
-else
-    # Fallback to basic checks
-    # Check if port is listening
-    MAX_RETRIES=15
-    RETRY_COUNT=0
-    PORT_READY=false
+# Give service time to initialize
+sleep 5
 
-    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-        if sudo lsof -i:$DASHBOARD_PORT | grep LISTEN &> /dev/null; then
-            PORT_READY=true
-            break
-        fi
-        RETRY_COUNT=$((RETRY_COUNT + 1))
-        sleep 1
-    done
+# Check if port is listening
+MAX_RETRIES=15
+RETRY_COUNT=0
+PORT_READY=false
 
-    if [ "$PORT_READY" = false ]; then
-        print_error "Dashboard port $DASHBOARD_PORT is not responding! Check logs: sudo journalctl -u $SERVICE_NAME -n 50"
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if sudo lsof -i:$DASHBOARD_PORT | grep LISTEN &> /dev/null; then
+        PORT_READY=true
+        break
     fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    sleep 1
+done
 
-    print_success "Port $DASHBOARD_PORT is listening"
+if [ "$PORT_READY" = false ]; then
+    echo ""
+    echo -e "${RED}╔════════════════════════════════════════╗${NC}"
+    echo -e "${RED}║   ❌ Dashboard Not Responding ❌       ║${NC}"
+    echo -e "${RED}╚════════════════════════════════════════╝${NC}"
+    echo ""
+    echo "Service logs:"
+    echo ""
+    sudo journalctl -u $SERVICE_NAME -n 30 --no-pager
+    echo ""
+    print_error "Dashboard port $DASHBOARD_PORT is not responding!"
+fi
 
-    # Try to connect to dashboard
-    if command -v curl &> /dev/null; then
-        sleep 2
-        if curl -s -o /dev/null -w "%{http_code}" http://localhost:$DASHBOARD_PORT | grep -q "200\|302"; then
-            print_success "Dashboard is responding"
-        else
-            print_warning "Dashboard port is open but not responding to HTTP requests yet (may still be initializing)"
-        fi
+print_success "Port $DASHBOARD_PORT is listening"
+
+# Try HTTP connection
+if command -v curl &> /dev/null; then
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$DASHBOARD_PORT 2>/dev/null || echo "000")
+    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "302" ]; then
+        print_success "Dashboard is responding (HTTP $HTTP_CODE)"
+    else
+        print_warning "Dashboard port is open but HTTP not ready yet (may still be initializing)"
     fi
 fi
 
