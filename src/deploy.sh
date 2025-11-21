@@ -206,6 +206,10 @@ print_step "Installing Python packages (this may take a few minutes)..."
 pip install --upgrade pip -q
 pip install -r requirements.txt -q
 
+# Install face recognition models separately (they sometimes fail silently)
+pip install face_recognition_models -q 2>/dev/null || \
+    pip install git+https://github.com/ageitgey/face_recognition_models -q
+
 print_success "Python environment ready"
 
 # ============================================
