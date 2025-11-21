@@ -148,8 +148,6 @@ sudo apt-get install -y \
     libatlas-base-dev \
     gfortran \
     libhdf5-dev \
-    libhdf5-serial-dev \
-    libhdf5-103 \
     libqhull-dev \
     libboost-all-dev \
     lsof \
